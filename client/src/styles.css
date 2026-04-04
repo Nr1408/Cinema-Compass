@@ -1,0 +1,320 @@
+@import url("https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;700&display=swap");
+
+:root {
+  --bg-1: #040a1a;
+  --bg-2: #112343;
+  --bg-3: #041b1f;
+  --card: rgba(9, 23, 45, 0.74);
+  --card-border: rgba(255, 255, 255, 0.12);
+  --text: #f4f6fb;
+  --muted: #b8c0d4;
+  --accent: #ff8a00;
+  --accent-2: #19c9b6;
+  --danger: #ff6f6f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "DM Sans", "Segoe UI", sans-serif;
+  color: var(--text);
+  background: radial-gradient(circle at 10% 15%, #223f76 0%, transparent 35%),
+    radial-gradient(circle at 80% 80%, #134f4c 0%, transparent 32%),
+    linear-gradient(140deg, var(--bg-1), var(--bg-2) 45%, var(--bg-3));
+}
+
+.page-shell {
+  width: min(1100px, 94vw);
+  margin: 0 auto;
+  padding: 2.2rem 0 3rem;
+}
+
+.hero {
+  text-align: center;
+  margin-bottom: 1.5rem;
+  animation: fade-up 600ms ease-out;
+}
+
+.hero-tag {
+  margin: 0;
+  color: var(--accent-2);
+  text-transform: uppercase;
+  letter-spacing: 0.2rem;
+  font-size: 0.82rem;
+}
+
+.hero h1 {
+  margin: 0.25rem 0;
+  font-family: "Bebas Neue", sans-serif;
+  letter-spacing: 0.08rem;
+  font-size: clamp(2.8rem, 7vw, 5rem);
+  color: #ffe4be;
+}
+
+.hero-subtitle {
+  margin: 0 auto;
+  color: var(--muted);
+  max-width: 600px;
+}
+
+.main-panel {
+  background: linear-gradient(160deg, var(--card), rgba(5, 16, 35, 0.78));
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--card-border);
+  border-radius: 1.4rem;
+  padding: clamp(1rem, 2.3vw, 2rem);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.32);
+  animation: fade-up 700ms ease-out;
+}
+
+.status-box {
+  padding: 1rem;
+  border-radius: 0.9rem;
+  border: 1px solid var(--card-border);
+  color: #e8edf8;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.status-box.error {
+  border-color: rgba(255, 111, 111, 0.5);
+  color: #ffd8d8;
+}
+
+.quiz-card h2 {
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+  font-size: clamp(1.35rem, 2.8vw, 2rem);
+}
+
+.quiz-top-row {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+}
+
+.progress-track {
+  margin-top: 0.6rem;
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), #ffd272, var(--accent-2));
+  transition: width 220ms ease;
+}
+
+.options-grid {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.option-chip {
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 0.9rem;
+  background: rgba(255, 255, 255, 0.05);
+  color: #f2f6ff;
+  padding: 0.95rem;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 170ms ease, border-color 170ms ease,
+    background-color 170ms ease;
+}
+
+.option-chip:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 138, 0, 0.55);
+}
+
+.option-chip.active {
+  border-color: var(--accent);
+  background: rgba(255, 138, 0, 0.14);
+}
+
+.actions-row {
+  margin-top: 1.2rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.primary-btn,
+.ghost-btn {
+  border-radius: 0.8rem;
+  border: 1px solid transparent;
+  padding: 0.75rem 1.1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 180ms ease;
+}
+
+.primary-btn {
+  background: linear-gradient(90deg, var(--accent), #f4a600);
+  color: #221103;
+}
+
+.primary-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(255, 138, 0, 0.3);
+}
+
+.ghost-btn {
+  border-color: rgba(255, 255, 255, 0.24);
+  background: transparent;
+  color: #e8ecf8;
+}
+
+.ghost-btn:hover:not(:disabled) {
+  border-color: var(--accent-2);
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.result-banner {
+  background: linear-gradient(
+    160deg,
+    rgba(255, 138, 0, 0.18),
+    rgba(25, 201, 182, 0.1)
+  );
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 1rem;
+  padding: 1rem 1.1rem;
+  margin-bottom: 1.2rem;
+}
+
+.result-banner p {
+  margin: 0;
+  color: #f6e8d4;
+}
+
+.result-banner h2 {
+  margin: 0.25rem 0;
+  font-size: clamp(1.7rem, 4vw, 2.6rem);
+  font-family: "Bebas Neue", sans-serif;
+  letter-spacing: 0.05rem;
+}
+
+.backup {
+  color: #d7fbf6;
+}
+
+.source-note {
+  margin-top: 0.4rem;
+  color: #d2deee;
+  font-size: 0.92rem;
+}
+
+.movie-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.movie-card {
+  border-radius: 1rem;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(7, 19, 39, 0.83);
+  display: flex;
+  flex-direction: column;
+  animation: card-in 420ms ease both;
+}
+
+.poster {
+  width: 100%;
+  height: 320px;
+  object-fit: cover;
+}
+
+.poster.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #253b67, #18484a);
+  color: #d9e6f8;
+  font-weight: 700;
+}
+
+.movie-content {
+  padding: 0.9rem;
+}
+
+.movie-content h3 {
+  margin: 0;
+  font-size: 1.02rem;
+}
+
+.movie-content p {
+  margin: 0.55rem 0;
+  color: #d2dbeb;
+  font-size: 0.92rem;
+}
+
+.movie-content .meta {
+  color: #8fbfba;
+  font-size: 0.82rem;
+}
+
+.movie-content a {
+  color: #f4d29f;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.movie-content a:hover {
+  color: #ffe8c2;
+}
+
+.restart {
+  margin-top: 1.2rem;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 640px) {
+  .page-shell {
+    width: min(95vw, 500px);
+    padding-top: 1.4rem;
+  }
+
+  .actions-row {
+    flex-direction: column;
+  }
+
+  .poster {
+    height: 280px;
+  }
+}

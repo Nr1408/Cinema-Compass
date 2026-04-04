@@ -1,0 +1,14 @@
+{
+  "name": "movie-mood-recommender",
+  "version": "1.0.0",
+  "private": true,
+  "description": "College project: quiz-based movie recommendation website",
+  "scripts": {
+    "install:all": "npm install --prefix server && npm install --prefix client",
+    "dev": "concurrently \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
+    "build": "npm run build --prefix client"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
