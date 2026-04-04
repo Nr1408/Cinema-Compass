@@ -16,7 +16,6 @@ const RECOMMEND_API_URL =
 
 const HISTORY_STORAGE_KEY = "cinema-compass-history-v1";
 const HISTORY_LIMIT = 8;
-const REFRESH_MODE_STORAGE_KEY = "cinema-compass-high-refresh-v1";
 
 function formatDate(value) {
   if (!value) {
@@ -49,14 +48,6 @@ export default function App() {
   const [result, setResult] = useState(null);
   const [feedbackByMovie, setFeedbackByMovie] = useState({});
   const [historyItems, setHistoryItems] = useState([]);
-  const [highRefreshMode, setHighRefreshMode] = useState(() => {
-    try {
-      const stored = localStorage.getItem(REFRESH_MODE_STORAGE_KEY);
-      return stored !== "off";
-    } catch {
-      return true;
-    }
-  });
 
   const currentQuestion = questions[currentIndex] || null;
   const totalQuestions = questions.length;
@@ -146,21 +137,12 @@ export default function App() {
 
   useEffect(() => {
     const root = document.documentElement;
-    root.classList.toggle("high-refresh", highRefreshMode);
-
-    try {
-      localStorage.setItem(
-        REFRESH_MODE_STORAGE_KEY,
-        highRefreshMode ? "on" : "off"
-      );
-    } catch (storageError) {
-      console.error(storageError);
-    }
+    root.classList.add("high-refresh");
 
     return () => {
       root.classList.remove("high-refresh");
     };
-  }, [highRefreshMode]);
+  }, []);
 
   function chooseOption(optionId) {
     if (!currentQuestion) {
@@ -259,22 +241,12 @@ export default function App() {
   }
 
   return (
-    <div className={`page-shell ${highRefreshMode ? "high-refresh-ui" : ""}`}>
+    <div className="page-shell">
       <header className="hero">
         <h1>Cinema Compass</h1>
         <p className="hero-subtitle">
           Answer a few questions and discover your movie type instantly.
         </p>
-        <div className="refresh-mode-row">
-          <span>Refresh mode</span>
-          <button
-            type="button"
-            className={`refresh-toggle ${highRefreshMode ? "active" : ""}`}
-            onClick={() => setHighRefreshMode((prev) => !prev)}
-          >
-            {highRefreshMode ? "High (120Hz+)" : "Balanced"}
-          </button>
-        </div>
       </header>
 
       <main className="main-panel">

@@ -65,36 +65,6 @@ body {
   max-width: 600px;
 }
 
-.refresh-mode-row {
-  margin-top: 0.7rem;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.55rem;
-  padding: 0.3rem 0.45rem;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
-  color: #cfe2ff;
-  font-size: 0.82rem;
-}
-
-.refresh-toggle {
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
-  color: #f8fbff;
-  font-weight: 700;
-  padding: 0.24rem 0.62rem;
-  font-size: 0.76rem;
-  cursor: pointer;
-  transition: border-color var(--motion-fast) ease, background-color var(--motion-fast) ease;
-}
-
-.refresh-toggle.active {
-  border-color: rgba(25, 201, 182, 0.72);
-  background: rgba(25, 201, 182, 0.22);
-}
-
 .main-panel {
   background: linear-gradient(160deg, var(--card), rgba(5, 16, 35, 0.78));
   -webkit-backdrop-filter: blur(12px);
@@ -316,8 +286,7 @@ button:disabled {
 .primary-btn,
 .ghost-btn,
 .progress-fill,
-.movie-card,
-.refresh-toggle {
+.movie-card {
   will-change: transform, opacity;
   backface-visibility: hidden;
 }
@@ -502,8 +471,7 @@ button:disabled {
   .option-chip,
   .primary-btn,
   .ghost-btn,
-  .progress-fill,
-  .refresh-toggle {
+  .progress-fill {
     transition: none !important;
   }
 }
