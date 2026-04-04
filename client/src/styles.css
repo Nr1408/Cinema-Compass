@@ -11,6 +11,13 @@
   --accent: #ff8a00;
   --accent-2: #19c9b6;
   --danger: #ff6f6f;
+  --motion-fast: 170ms;
+  --motion-medium: 320ms;
+}
+
+html.high-refresh {
+  --motion-fast: 105ms;
+  --motion-medium: 220ms;
 }
 
 * {
@@ -27,6 +34,11 @@ body {
     linear-gradient(140deg, var(--bg-1), var(--bg-2) 45%, var(--bg-3));
 }
 
+html,
+body {
+  scroll-behavior: smooth;
+}
+
 .page-shell {
   width: min(1100px, 94vw);
   margin: 0 auto;
@@ -36,7 +48,7 @@ body {
 .hero {
   text-align: center;
   margin-bottom: 1.5rem;
-  animation: fade-up 600ms ease-out;
+  animation: fade-up var(--motion-medium) ease-out;
 }
 
 .hero h1 {
@@ -53,6 +65,36 @@ body {
   max-width: 600px;
 }
 
+.refresh-mode-row {
+  margin-top: 0.7rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.3rem 0.45rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #cfe2ff;
+  font-size: 0.82rem;
+}
+
+.refresh-toggle {
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #f8fbff;
+  font-weight: 700;
+  padding: 0.24rem 0.62rem;
+  font-size: 0.76rem;
+  cursor: pointer;
+  transition: border-color var(--motion-fast) ease, background-color var(--motion-fast) ease;
+}
+
+.refresh-toggle.active {
+  border-color: rgba(25, 201, 182, 0.72);
+  background: rgba(25, 201, 182, 0.22);
+}
+
 .main-panel {
   background: linear-gradient(160deg, var(--card), rgba(5, 16, 35, 0.78));
   -webkit-backdrop-filter: blur(12px);
@@ -61,7 +103,12 @@ body {
   border-radius: 1.4rem;
   padding: clamp(1rem, 2.3vw, 2rem);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.32);
-  animation: fade-up 700ms ease-out;
+  animation: fade-up calc(var(--motion-medium) + 90ms) ease-out;
+}
+
+html.high-refresh .main-panel {
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
 }
 
 .status-box {
@@ -102,7 +149,7 @@ body {
   height: 100%;
   border-radius: inherit;
   background: linear-gradient(90deg, var(--accent), #ffd272, var(--accent-2));
-  transition: width 220ms ease;
+  transition: width var(--motion-fast) linear;
 }
 
 .options-grid {
@@ -119,8 +166,8 @@ body {
   padding: 0.95rem;
   text-align: left;
   cursor: pointer;
-  transition: transform 170ms ease, border-color 170ms ease,
-    background-color 170ms ease;
+  transition: transform var(--motion-fast) ease, border-color var(--motion-fast) ease,
+    background-color var(--motion-fast) ease;
 }
 
 .option-chip:hover {
@@ -147,7 +194,7 @@ body {
   padding: 0.75rem 1.1rem;
   font-weight: 700;
   cursor: pointer;
-  transition: all 180ms ease;
+  transition: all var(--motion-fast) ease;
 }
 
 .primary-btn {
@@ -262,7 +309,17 @@ button:disabled {
   background: rgba(7, 19, 39, 0.83);
   display: flex;
   flex-direction: column;
-  animation: card-in 420ms ease both;
+  animation: card-in calc(var(--motion-medium) + 100ms) ease both;
+}
+
+.option-chip,
+.primary-btn,
+.ghost-btn,
+.progress-fill,
+.movie-card,
+.refresh-toggle {
+  will-change: transform, opacity;
+  backface-visibility: hidden;
 }
 
 .poster {
@@ -432,5 +489,21 @@ button:disabled {
   .history-top-row {
     flex-direction: column;
     align-items: flex-start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero,
+  .main-panel,
+  .movie-card {
+    animation: none !important;
+  }
+
+  .option-chip,
+  .primary-btn,
+  .ghost-btn,
+  .progress-fill,
+  .refresh-toggle {
+    transition: none !important;
   }
 }

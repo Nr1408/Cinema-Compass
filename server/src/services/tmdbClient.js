@@ -59,6 +59,18 @@ function pickFocusQuery(focusTags = []) {
   return null;
 }
 
+function buildPagedUrls(baseUrl, params, startPage, endPage) {
+  const urls = [];
+
+  for (let page = startPage; page <= endPage; page += 1) {
+    const nextParams = new URLSearchParams(params);
+    nextParams.set("page", String(page));
+    urls.push(`${baseUrl}?${nextParams.toString()}`);
+  }
+
+  return urls;
+}
+
 function mapTmdbMovie(movie) {
   const mappedGenres = Array.isArray(movie.genre_ids)
     ? movie.genre_ids
@@ -75,6 +87,7 @@ function mapTmdbMovie(movie) {
     posterPath: movie.poster_path,
     releaseDate: movie.release_date,
     rating: movie.vote_average,
+    voteCount: movie.vote_count,
     tmdbUrl: `https://www.themoviedb.org/movie/${movie.id}`,
     genres: mappedGenres,
     tags: inferredTags,
@@ -110,7 +123,7 @@ export async function fetchMoviesFromTmdb({
     return { source: "fallback", movies: [] };
   }
 
-  const params = new URLSearchParams({
+  const strictParams = new URLSearchParams({
     api_key: apiKey,
     include_adult: "false",
     include_video: "false",
@@ -120,20 +133,30 @@ export async function fetchMoviesFromTmdb({
     with_genres: [primaryGenreId, secondaryGenreId].filter(Boolean).join(",")
   });
 
+  const broadParams = new URLSearchParams({
+    api_key: apiKey,
+    include_adult: "false",
+    include_video: "false",
+    language: "en-US",
+    sort_by: "popularity.desc",
+    vote_count_gte: "80",
+    with_genres: String(primaryGenreId)
+  });
+
   if (languagePreference && languagePreference !== "any") {
-    params.set("with_original_language", languagePreference);
+    strictParams.set("with_original_language", languagePreference);
+    broadParams.set("with_original_language", languagePreference);
   }
 
-  const discoverPageOne = new URLSearchParams(params);
-  discoverPageOne.set("page", "1");
-
-  const discoverPageTwo = new URLSearchParams(params);
-  discoverPageTwo.set("page", "2");
-
   const discoverUrls = [
-    `${TMDB_BASE_URL}/discover/movie?${discoverPageOne.toString()}`,
-    `${TMDB_BASE_URL}/discover/movie?${discoverPageTwo.toString()}`
+    ...buildPagedUrls(`${TMDB_BASE_URL}/discover/movie`, strictParams, 1, 3)
   ];
+
+  if (secondaryGenreId) {
+    discoverUrls.push(
+      ...buildPagedUrls(`${TMDB_BASE_URL}/discover/movie`, broadParams, 1, 2)
+    );
+  }
 
   const focusQuery = pickFocusQuery(focusTags);
   if (focusQuery) {
@@ -174,7 +197,7 @@ export async function fetchMoviesFromTmdb({
 
   const movies = (languageFilteredMovies.length ? languageFilteredMovies : mappedMovies).slice(
     0,
-    36
+    72
   );
 
   return {

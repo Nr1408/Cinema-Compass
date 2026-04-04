@@ -5,7 +5,35 @@ import {
   QUESTIONS
 } from "../data/questions.js";
 
-export const RESULT_LIMIT = 5;
+export const RESULT_LIMIT = 8;
+
+const MODEL_WEIGHTS = {
+  genreAlignmentBase: 24,
+  genreAlignmentStrictnessBoost: 10,
+  primaryMatchBase: 5,
+  primaryMatchStrictnessBoost: 7,
+  primaryMissBasePenalty: 2.8,
+  primaryMissStrictnessPenalty: 4.6,
+  secondaryMatchBase: 2.2,
+  secondaryMatchStrictnessBoost: 2.8,
+  tagOverlapBase: 6,
+  tagOverlapStrictnessBoost: 8,
+  focusBaseBonus: 8,
+  focusStrictnessBoost: 8,
+  focusMissBasePenalty: 4,
+  focusMissStrictnessPenalty: 8,
+  languageMatchBase: 3,
+  languageMatchStrictnessBoost: 6,
+  languageMissBasePenalty: 3,
+  languageMissStrictnessPenalty: 7,
+  runtimeMatch: 2.2,
+  runtimeMissPenalty: 1.4,
+  eraMatch: 2.1,
+  eraMissPenalty: 2.2,
+  ratingBaseWeight: 1.6,
+  voteCountBoostWeight: 0.9,
+  constraintFitBoost: 9
+};
 
 const QUESTION_IMPORTANCE = {
   focus: 4.2,
@@ -34,6 +62,15 @@ function createInitialScores() {
   }, {});
 }
 
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function safeNumber(value, fallback = 0) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
 function normalizeScores(scores) {
   const positiveTotal = Object.values(scores).reduce(
     (sum, value) => sum + Math.max(0, Number(value || 0)),
@@ -55,6 +92,7 @@ function normalizeScores(scores) {
 export function parseAnswers(answers) {
   const genreScores = createInitialScores();
   const tagScores = {};
+  let answeredCount = 0;
 
   let languagePreference = "any";
   let runtimePreference = null;
@@ -67,6 +105,8 @@ export function parseAnswers(answers) {
     if (!option || !option.weights) {
       continue;
     }
+
+    answeredCount += 1;
 
     const questionWeight = QUESTION_IMPORTANCE[questionId] || 1;
 
@@ -101,6 +141,7 @@ export function parseAnswers(answers) {
     genreScores,
     normalizedGenreScores: normalizeScores(genreScores),
     tagScores,
+    answeredCount,
     languagePreference,
     runtimePreference,
     eraPreference,
@@ -130,36 +171,157 @@ export function buildRankContext(profile) {
   const [primaryKey, secondaryKey] = selectTopGenres(profile.genreScores);
   const preferredTags = getTopPreferenceTags(profile.tagScores, 4);
 
+  const scoreValues = Object.values(profile.genreScores).map((value) =>
+    Math.max(0, safeNumber(value))
+  );
+  const scoreTotal = scoreValues.reduce((sum, value) => sum + value, 0);
+  const primaryShare = scoreTotal
+    ? Math.max(0, safeNumber(profile.genreScores[primaryKey])) / scoreTotal
+    : 0;
+  const secondaryShare =
+    scoreTotal && secondaryKey
+      ? Math.max(0, safeNumber(profile.genreScores[secondaryKey])) / scoreTotal
+      : 0;
+  const dominance = Math.max(0, primaryShare - secondaryShare);
+  const focusFactor = profile.focusTags.length
+    ? Math.min(profile.focusTags.length / 3, 1)
+    : 0;
+  const languageFactor = profile.languagePreference !== "any" ? 1 : 0;
+  const answerCoverage = clamp(
+    safeNumber(profile.answeredCount) / Math.max(QUESTIONS.length, 1),
+    0,
+    1
+  );
+
+  const strictness = clamp(
+    0.34 +
+      primaryShare * 0.28 +
+      dominance * 0.22 +
+      focusFactor * 0.1 +
+      languageFactor * 0.06 +
+      answerCoverage * 0.1,
+    0.35,
+    0.96
+  );
+
   return {
     ...profile,
     primaryKey,
     secondaryKey,
-    preferredTags
+    preferredTags,
+    strictness
   };
+}
+
+function computeWeightedTagOverlap(movieTags, tagScores) {
+  const desiredTagEntries = Object.entries(tagScores || {}).filter(
+    ([, score]) => safeNumber(score) > 0
+  );
+
+  if (!desiredTagEntries.length) {
+    return 0;
+  }
+
+  const desiredTotal = desiredTagEntries.reduce(
+    (sum, [, score]) => sum + safeNumber(score),
+    0
+  );
+
+  if (!desiredTotal) {
+    return 0;
+  }
+
+  const movieTagSet = new Set(Array.isArray(movieTags) ? movieTags : []);
+  const matchedTotal = desiredTagEntries.reduce((sum, [tag, score]) => {
+    return movieTagSet.has(tag) ? sum + safeNumber(score) : sum;
+  }, 0);
+
+  return matchedTotal / desiredTotal;
+}
+
+function computeConstraintFit(movie, context) {
+  let slots = 0;
+  let matched = 0;
+
+  if (context.languagePreference && context.languagePreference !== "any") {
+    slots += 1;
+
+    if (movie.language === context.languagePreference) {
+      matched += 1;
+    } else if (!movie.language || movie.language === "unknown") {
+      matched += 0.35;
+    }
+  }
+
+  if (context.eraPreference) {
+    slots += 1;
+    if (movie.era === context.eraPreference) {
+      matched += 1;
+    }
+  }
+
+  if (context.focusTags.length) {
+    slots += 1;
+
+    const movieTags = Array.isArray(movie.tags) ? movie.tags : [];
+    const focusMatches = context.focusTags.filter((tag) => movieTags.includes(tag)).length;
+
+    if (focusMatches > 0) {
+      matched += Math.min(1, focusMatches / context.focusTags.length + 0.2);
+    }
+  }
+
+  return slots ? matched / slots : 0.7;
 }
 
 export function inferTagsFromText(title = "", overview = "") {
   const text = `${title} ${overview}`.toLowerCase();
 
-  const tagKeywordMap = {
-    motorsport: ["formula", "f1", "race", "racing", "grand prix", "track"],
-    cars: ["car", "cars", "driver", "racing", "speed"],
-    sports: ["sport", "athlete", "team", "match", "coach", "tournament"],
-    superhero: ["superhero", "hero", "avenger", "batman", "spider-man", "x-men"],
-    detective: ["detective", "investigation", "murder case", "crime scene"],
-    mindgame: ["mind", "twist", "psychological", "mystery", "secret"],
-    trueStory: ["true story", "based on", "biography", "real-life", "real life"],
-    feelgood: ["friendship", "heartwarming", "joy", "uplifting"],
-    dark: ["dark", "horror", "haunted", "killer", "terror"],
-    anime: ["anime", "manga"],
-    family: ["family", "kids", "children"],
-    inspiring: ["inspire", "inspiring", "comeback", "dream", "overcome"]
+  const tagPatternMap = {
+    motorsport: [
+      /\bformula\s?1\b/,
+      /\bf1\b/,
+      /\bgrand prix\b/,
+      /\ble mans\b/,
+      /\bmotorsport\b/,
+      /\brace\s?car\b/,
+      /\bpit stop\b/
+    ],
+    cars: [/\bcar\b/, /\bcars\b/, /\brace\s?car\b/, /\bdriver\b/, /\bspeedway\b/],
+    sports: [
+      /\bathlete\b/,
+      /\bteam\b/,
+      /\bcoach\b/,
+      /\btournament\b/,
+      /\bleague\b/,
+      /\bmatch\b/,
+      /\bchampionship\b/,
+      /\bfootball\b/,
+      /\bcricket\b/,
+      /\bbasketball\b/,
+      /\bboxing\b/
+    ],
+    superhero: [
+      /\bsuperhero\b/,
+      /\bavenger\b/,
+      /\bbatman\b/,
+      /\bspider-man\b/,
+      /\bx-men\b/
+    ],
+    detective: [/\bdetective\b/, /\binvestigation\b/, /\bmurder case\b/, /\bcrime scene\b/],
+    mindgame: [/\btwist\b/, /\bpsychological\b/, /\bmystery\b/, /\bsecret\b/],
+    trueStory: [/\btrue story\b/, /\bbased on\b/, /\bbiography\b/, /\breal[- ]life\b/],
+    feelgood: [/\bfriendship\b/, /\bheartwarming\b/, /\buplifting\b/, /\bfeel-good\b/],
+    dark: [/\bdark\b/, /\bhorror\b/, /\bhaunted\b/, /\bkiller\b/, /\bterror\b/],
+    anime: [/\banime\b/, /\bmanga\b/],
+    family: [/\bfamily\b/, /\bkids\b/, /\bchildren\b/],
+    inspiring: [/\binspir(e|ing)\b/, /\bcomeback\b/, /\bdream\b/, /\bovercome\b/]
   };
 
   const detectedTags = [];
 
-  for (const [tag, keywords] of Object.entries(tagKeywordMap)) {
-    if (keywords.some((keyword) => text.includes(keyword))) {
+  for (const [tag, patterns] of Object.entries(tagPatternMap)) {
+    if (patterns.some((pattern) => pattern.test(text))) {
       detectedTags.push(tag);
     }
   }
@@ -170,6 +332,7 @@ export function inferTagsFromText(title = "", overview = "") {
 export function scoreMovie(movie, context) {
   const movieGenres = Array.isArray(movie.genres) ? movie.genres : [];
   const movieTags = Array.isArray(movie.tags) ? movie.tags : [];
+  const strictness = clamp(safeNumber(context.strictness, 0.55), 0.35, 0.96);
 
   let score = 0;
 
@@ -177,51 +340,87 @@ export function scoreMovie(movie, context) {
     (sum, genre) => sum + (context.normalizedGenreScores[genre] || 0),
     0
   );
-  score += genreAlignment * 24;
+  score +=
+    genreAlignment *
+    (MODEL_WEIGHTS.genreAlignmentBase +
+      MODEL_WEIGHTS.genreAlignmentStrictnessBoost * strictness);
 
   if (movieGenres.includes(context.primaryKey)) {
-    score += 7;
+    score +=
+      MODEL_WEIGHTS.primaryMatchBase +
+      MODEL_WEIGHTS.primaryMatchStrictnessBoost * strictness;
   } else {
-    score -= 4;
+    score -=
+      MODEL_WEIGHTS.primaryMissBasePenalty +
+      MODEL_WEIGHTS.primaryMissStrictnessPenalty * strictness;
   }
 
   if (context.secondaryKey && movieGenres.includes(context.secondaryKey)) {
-    score += 2.4;
+    score +=
+      MODEL_WEIGHTS.secondaryMatchBase +
+      MODEL_WEIGHTS.secondaryMatchStrictnessBoost * strictness;
   }
 
-  for (const tag of context.preferredTags) {
-    if (movieTags.includes(tag)) {
-      score += (context.tagScores[tag] || 1) * 2.1;
-    }
-  }
+  const tagOverlap = computeWeightedTagOverlap(movieTags, context.tagScores);
+  score +=
+    tagOverlap *
+    (MODEL_WEIGHTS.tagOverlapBase + MODEL_WEIGHTS.tagOverlapStrictnessBoost * strictness);
 
   if (context.focusTags.length) {
     const focusMatches = context.focusTags.filter((tag) => movieTags.includes(tag)).length;
+    const focusCoverage = focusMatches / context.focusTags.length;
 
     if (focusMatches > 0) {
-      score += 10 + focusMatches * 3;
+      score +=
+        focusCoverage *
+          (MODEL_WEIGHTS.focusBaseBonus + MODEL_WEIGHTS.focusStrictnessBoost * strictness) +
+        focusMatches * 2.2;
     } else {
-      score -= 8;
+      score -=
+        MODEL_WEIGHTS.focusMissBasePenalty +
+        MODEL_WEIGHTS.focusMissStrictnessPenalty * strictness;
     }
   }
 
   if (context.languagePreference !== "any") {
     if (movie.language === context.languagePreference) {
-      score += 6;
+      score +=
+        MODEL_WEIGHTS.languageMatchBase +
+        MODEL_WEIGHTS.languageMatchStrictnessBoost * strictness;
+    } else if (!movie.language || movie.language === "unknown") {
+      score -= MODEL_WEIGHTS.languageMissBasePenalty / 2;
     } else if (movie.language && movie.language !== "unknown") {
-      score -= 7;
+      score -=
+        MODEL_WEIGHTS.languageMissBasePenalty +
+        MODEL_WEIGHTS.languageMissStrictnessPenalty * strictness;
     }
   }
 
   if (context.runtimePreference && movie.runtime) {
-    score += movie.runtime === context.runtimePreference ? 2.1 : -1.2;
+    score +=
+      movie.runtime === context.runtimePreference
+        ? MODEL_WEIGHTS.runtimeMatch
+        : -MODEL_WEIGHTS.runtimeMissPenalty;
   }
 
   if (context.eraPreference && movie.era) {
-    score += movie.era === context.eraPreference ? 2 : -1;
+    score +=
+      movie.era === context.eraPreference
+        ? MODEL_WEIGHTS.eraMatch
+        : -MODEL_WEIGHTS.eraMissPenalty;
   }
 
-  score += Math.min(Number(movie.rating || 0), 10) * 0.14;
+  const ratingValue = clamp(safeNumber(movie.rating), 0, 10) / 10;
+  const voteConfidence = movie.voteCount
+    ? clamp(Math.log10(safeNumber(movie.voteCount, 0) + 1) / 3, 0, 1)
+    : 0.35;
+
+  score +=
+    ratingValue *
+    (MODEL_WEIGHTS.ratingBaseWeight + MODEL_WEIGHTS.voteCountBoostWeight * voteConfidence);
+
+  const constraintFit = computeConstraintFit(movie, context);
+  score += constraintFit * MODEL_WEIGHTS.constraintFitBoost;
 
   return score;
 }
@@ -229,6 +428,8 @@ export function scoreMovie(movie, context) {
 export function rankMovies(movies, context, limit = RESULT_LIMIT) {
   const baseMovies = Array.isArray(movies) ? movies : [];
   let candidateMovies = baseMovies;
+  const minConstraintFit =
+    context.strictness >= 0.82 ? 0.84 : context.strictness >= 0.68 ? 0.72 : 0.52;
 
   if (context.languagePreference && context.languagePreference !== "any") {
     const languageMatches = candidateMovies.filter(
@@ -259,13 +460,27 @@ export function rankMovies(movies, context, limit = RESULT_LIMIT) {
     }
   }
 
+  const strictCandidates = candidateMovies.filter(
+    (movie) => computeConstraintFit(movie, context) >= minConstraintFit
+  );
+
+  if (strictCandidates.length >= Math.max(limit - 1, Math.ceil(limit * 0.85))) {
+    candidateMovies = strictCandidates;
+  }
+
   const scoreAndSort = (items) =>
     items
       .map((movie) => ({
         ...movie,
-        __score: scoreMovie(movie, context)
+        __score: scoreMovie(movie, context),
+        __constraintFit: computeConstraintFit(movie, context)
       }))
-      .sort((a, b) => b.__score - a.__score || (b.rating || 0) - (a.rating || 0));
+      .sort(
+        (a, b) =>
+          b.__score - a.__score ||
+          b.__constraintFit - a.__constraintFit ||
+          (b.rating || 0) - (a.rating || 0)
+      );
 
   const ranked = scoreAndSort(candidateMovies);
 
@@ -278,7 +493,7 @@ export function rankMovies(movies, context, limit = RESULT_LIMIT) {
     }
 
     seenIds.add(movie.id);
-    const { __score, ...moviePayload } = movie;
+    const { __score, __constraintFit, ...moviePayload } = movie;
     uniqueMovies.push(moviePayload);
 
     if (uniqueMovies.length >= limit) {
@@ -296,7 +511,7 @@ export function rankMovies(movies, context, limit = RESULT_LIMIT) {
       }
 
       alreadyIncluded.add(movie.id);
-      const { __score, ...moviePayload } = movie;
+      const { __score, __constraintFit, ...moviePayload } = movie;
       uniqueMovies.push(moviePayload);
 
       if (uniqueMovies.length >= limit) {
