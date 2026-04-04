@@ -14,6 +14,9 @@ const RECOMMEND_API_URL =
     ? `${LEGACY_API_BASE_URL}/api/recommend`
     : "http://localhost:5000/api/recommend");
 
+const HISTORY_STORAGE_KEY = "cinema-compass-history-v1";
+const HISTORY_LIMIT = 8;
+
 function formatDate(value) {
   if (!value) {
     return "Unknown date";
@@ -43,6 +46,8 @@ export default function App() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState(null);
+  const [feedbackByMovie, setFeedbackByMovie] = useState({});
+  const [historyItems, setHistoryItems] = useState([]);
 
   const currentQuestion = questions[currentIndex] || null;
   const totalQuestions = questions.length;
@@ -54,6 +59,31 @@ export default function App() {
     }
     return Math.round(((currentIndex + 1) / totalQuestions) * 100);
   }, [currentIndex, totalQuestions]);
+
+  const rankedMovies = useMemo(() => {
+    const movies = Array.isArray(result?.movies) ? result.movies : [];
+    const originalOrder = new Map(movies.map((movie, index) => [String(movie.id), index]));
+
+    const getFeedbackScore = (movieId) => {
+      const feedback = feedbackByMovie[String(movieId)];
+      if (feedback === "like") {
+        return 2;
+      }
+      if (feedback === "dislike") {
+        return 0;
+      }
+      return 1;
+    };
+
+    return [...movies].sort((a, b) => {
+      const scoreDiff = getFeedbackScore(b.id) - getFeedbackScore(a.id);
+      if (scoreDiff !== 0) {
+        return scoreDiff;
+      }
+
+      return (originalOrder.get(String(a.id)) || 0) - (originalOrder.get(String(b.id)) || 0);
+    });
+  }, [result, feedbackByMovie]);
 
   useEffect(() => {
     async function loadQuestions() {
@@ -80,6 +110,30 @@ export default function App() {
 
     loadQuestions();
   }, []);
+
+  useEffect(() => {
+    try {
+      const storedHistory = localStorage.getItem(HISTORY_STORAGE_KEY);
+      if (!storedHistory) {
+        return;
+      }
+
+      const parsed = JSON.parse(storedHistory);
+      if (Array.isArray(parsed)) {
+        setHistoryItems(parsed);
+      }
+    } catch (historyError) {
+      console.error(historyError);
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(historyItems));
+    } catch (historyError) {
+      console.error(historyError);
+    }
+  }, [historyItems]);
 
   function chooseOption(optionId) {
     if (!currentQuestion) {
@@ -111,6 +165,17 @@ export default function App() {
 
       const data = await response.json();
       setResult(data);
+      setFeedbackByMovie({});
+
+      const historyEntry = {
+        id: `${Date.now()}`,
+        time: new Date().toISOString(),
+        movieType: data.movieType,
+        topMovie: data.movies?.[0]?.title || "No movie available",
+        source: data.source
+      };
+
+      setHistoryItems((prev) => [historyEntry, ...prev].slice(0, HISTORY_LIMIT));
     } catch (submitError) {
       console.error(submitError);
       setError("Could not generate recommendation. Please try again.");
@@ -141,12 +206,34 @@ export default function App() {
     setAnswers({});
     setCurrentIndex(0);
     setError("");
+    setFeedbackByMovie({});
+  }
+
+  function updateMovieFeedback(movieId, feedbackType) {
+    const key = String(movieId);
+
+    setFeedbackByMovie((prev) => {
+      if (prev[key] === feedbackType) {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      }
+
+      return {
+        ...prev,
+        [key]: feedbackType
+      };
+    });
+  }
+
+  function clearHistory() {
+    setHistoryItems([]);
+    localStorage.removeItem(HISTORY_STORAGE_KEY);
   }
 
   return (
     <div className="page-shell">
       <header className="hero">
-        <p className="hero-tag">College Project</p>
         <h1>Cinema Compass</h1>
         <p className="hero-subtitle">
           Answer a few questions and discover your movie type instantly.
@@ -243,8 +330,21 @@ export default function App() {
               ) : null}
             </div>
 
+            <div className="result-actions-row">
+              <p className="result-help-note">
+                Use Like/Dislike to instantly rerank this list by your taste.
+              </p>
+              <button
+                type="button"
+                className="ghost-btn reset-rerank-btn"
+                onClick={() => setFeedbackByMovie({})}
+              >
+                Reset rerank
+              </button>
+            </div>
+
             <div className="movie-grid">
-              {(result.movies || []).map((movie, index) => (
+              {rankedMovies.map((movie, index) => (
                 <article
                   key={movie.id}
                   className="movie-card"
@@ -267,6 +367,28 @@ export default function App() {
                       {formatDate(movie.releaseDate)} | Rating {movie.rating ?? "N/A"}
                     </p>
                     <p>{movie.overview || "No description available."}</p>
+                    <div className="feedback-row">
+                      <button
+                        type="button"
+                        className={`tiny-btn ${
+                          feedbackByMovie[String(movie.id)] === "like" ? "active-like" : ""
+                        }`}
+                        onClick={() => updateMovieFeedback(movie.id, "like")}
+                      >
+                        Like
+                      </button>
+                      <button
+                        type="button"
+                        className={`tiny-btn ${
+                          feedbackByMovie[String(movie.id)] === "dislike"
+                            ? "active-dislike"
+                            : ""
+                        }`}
+                        onClick={() => updateMovieFeedback(movie.id, "dislike")}
+                      >
+                        Dislike
+                      </button>
+                    </div>
                     {movie.tmdbUrl ? (
                       <a href={movie.tmdbUrl} target="_blank" rel="noreferrer">
                         Open details
@@ -280,6 +402,34 @@ export default function App() {
             <button type="button" className="primary-btn restart" onClick={restart}>
               Retake quiz
             </button>
+          </section>
+        ) : null}
+
+        {historyItems.length ? (
+          <section className="history-panel">
+            <div className="history-top-row">
+              <h3>Recent recommendation history</h3>
+              <button
+                type="button"
+                className="ghost-btn clear-history-btn"
+                onClick={clearHistory}
+              >
+                Clear history
+              </button>
+            </div>
+
+            <div className="history-list">
+              {historyItems.map((item) => (
+                <article key={item.id} className="history-item">
+                  <p>
+                    <strong>{item.movieType}</strong> | {item.topMovie}
+                  </p>
+                  <p className="history-meta">
+                    {new Date(item.time).toLocaleString()} | Source: {item.source}
+                  </p>
+                </article>
+              ))}
+            </div>
           </section>
         ) : null}
       </main>

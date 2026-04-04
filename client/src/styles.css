@@ -39,14 +39,6 @@ body {
   animation: fade-up 600ms ease-out;
 }
 
-.hero-tag {
-  margin: 0;
-  color: var(--accent-2);
-  text-transform: uppercase;
-  letter-spacing: 0.2rem;
-  font-size: 0.82rem;
-}
-
 .hero h1 {
   margin: 0.25rem 0;
   font-family: "Bebas Neue", sans-serif;
@@ -240,6 +232,23 @@ button:disabled {
   color: #ebf8f7;
 }
 
+.result-actions-row {
+  margin-top: 0.8rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.result-help-note {
+  color: #d6e3f4 !important;
+  font-size: 0.9rem;
+}
+
+.reset-rerank-btn {
+  padding: 0.5rem 0.8rem;
+}
+
 .movie-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -286,6 +295,32 @@ button:disabled {
   font-size: 0.92rem;
 }
 
+.feedback-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+}
+
+.tiny-btn {
+  border: 1px solid rgba(255, 255, 255, 0.23);
+  background: rgba(255, 255, 255, 0.08);
+  color: #eef4ff;
+  border-radius: 999px;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.tiny-btn.active-like {
+  border-color: rgba(25, 201, 182, 0.7);
+  background: rgba(25, 201, 182, 0.2);
+}
+
+.tiny-btn.active-dislike {
+  border-color: rgba(255, 111, 111, 0.72);
+  background: rgba(255, 111, 111, 0.22);
+}
+
 .movie-content .meta {
   color: #8fbfba;
   font-size: 0.82rem;
@@ -303,6 +338,54 @@ button:disabled {
 
 .restart {
   margin-top: 1.2rem;
+}
+
+.history-panel {
+  margin-top: 1.25rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 0.9rem;
+}
+
+.history-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.history-top-row h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.clear-history-btn {
+  padding: 0.45rem 0.75rem;
+  font-size: 0.82rem;
+}
+
+.history-list {
+  margin-top: 0.7rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.history-item {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 0.72rem;
+  padding: 0.55rem 0.65rem;
+  background: rgba(0, 0, 0, 0.16);
+}
+
+.history-item p {
+  margin: 0;
+}
+
+.history-meta {
+  margin-top: 0.25rem !important;
+  color: #c0d1e6 !important;
+  font-size: 0.8rem !important;
 }
 
 @keyframes fade-up {
@@ -339,5 +422,15 @@ button:disabled {
 
   .poster {
     height: 280px;
+  }
+
+  .result-actions-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .history-top-row {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }
