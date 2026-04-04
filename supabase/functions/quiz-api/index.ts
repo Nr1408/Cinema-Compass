@@ -2,25 +2,19 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
 import { FALLBACK_MOVIES } from "../../../server/src/data/fallbackMovies.js";
+import { GENRES, QUESTIONS } from "../../../server/src/data/questions.js";
 import {
-  GENRES,
-  LANGUAGE_LABELS,
-  PREFERENCE_TAG_LABELS,
-  QUESTIONS
-} from "../../../server/src/data/questions.js";
-
-const OPTION_LOOKUP = new Map();
-const RESULT_LIMIT = 5;
+  buildRankContext,
+  buildReason,
+  formatAppliedPreferences,
+  inferTagsFromText,
+  parseAnswers,
+  rankMovies
+} from "../../../server/src/services/recommendationCore.js";
 
 const GENRE_ID_TO_KEY = Object.fromEntries(
   Object.entries(GENRES).map(([genreKey, genreValue]) => [genreValue.id, genreKey])
 );
-
-for (const question of QUESTIONS) {
-  for (const option of question.options) {
-    OPTION_LOOKUP.set(`${question.id}:${option.id}`, option);
-  }
-}
 
 function getCorsHeaders(origin) {
   const configuredOrigins = Deno.env.get("CORS_ORIGIN") || "*";
@@ -69,171 +63,56 @@ function getPublicQuestions() {
   }));
 }
 
-function createInitialScores() {
-  return Object.keys(GENRES).reduce((acc, key) => {
-    acc[key] = 0;
-    return acc;
-  }, {});
+function inferEraFromDate(releaseDate) {
+  const year = Number(String(releaseDate || "").slice(0, 4));
+
+  if (!year || Number.isNaN(year)) {
+    return null;
+  }
+
+  if (year >= 2020) {
+    return "latest";
+  }
+
+  if (year >= 2005) {
+    return "modern";
+  }
+
+  return "classic";
 }
 
-function parseAnswers(answers) {
-  const scores = createInitialScores();
-  const tagCounts = {};
+function pickFocusQuery(focusTags = []) {
+  const tagSet = new Set(focusTags);
 
-  let languagePreference = "any";
-  let runtimePreference = null;
-  let eraPreference = null;
-
-  for (const [questionId, optionId] of Object.entries(answers || {})) {
-    const option = OPTION_LOOKUP.get(`${questionId}:${optionId}`);
-    if (!option || !option.weights) {
-      continue;
-    }
-
-    for (const [genreKey, weight] of Object.entries(option.weights)) {
-      scores[genreKey] = (scores[genreKey] || 0) + Number(weight || 0);
-    }
-
-    for (const tag of option.tags || []) {
-      tagCounts[tag] = (tagCounts[tag] || 0) + 1;
-    }
-
-    if (option.language) {
-      languagePreference = option.language;
-    }
-
-    if (option.runtime) {
-      runtimePreference = option.runtime;
-    }
-
-    if (option.era) {
-      eraPreference = option.era;
-    }
+  if (tagSet.has("motorsport") || tagSet.has("cars")) {
+    return "racing";
   }
 
-  return {
-    scores,
-    tagCounts,
-    languagePreference,
-    runtimePreference,
-    eraPreference
-  };
-}
-
-function selectTopGenres(scores) {
-  const ranked = Object.entries(scores).sort((a, b) => b[1] - a[1]);
-
-  if (!ranked.length || ranked[0][1] <= 0) {
-    return ["comedy", "drama"];
+  if (tagSet.has("sports")) {
+    return "sports";
   }
 
-  const primaryKey = ranked[0][0];
-  const secondaryKey = ranked[1] ? ranked[1][0] : null;
-
-  return [primaryKey, secondaryKey];
-}
-
-function getTopPreferenceTags(tagCounts) {
-  return Object.entries(tagCounts)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 3)
-    .map(([tag]) => tag);
-}
-
-function scoreMovie(movie, context) {
-  const movieGenres = Array.isArray(movie.genres) ? movie.genres : [];
-  const movieTags = Array.isArray(movie.tags) ? movie.tags : [];
-
-  let score = 0;
-
-  if (movieGenres.includes(context.primaryKey)) {
-    score += 8;
+  if (tagSet.has("superhero")) {
+    return "superhero";
   }
 
-  if (context.secondaryKey && movieGenres.includes(context.secondaryKey)) {
-    score += 4;
+  if (tagSet.has("detective")) {
+    return "detective";
   }
 
-  for (const tag of context.preferredTags) {
-    if (movieTags.includes(tag)) {
-      score += 3;
-    }
+  if (tagSet.has("anime")) {
+    return "anime";
   }
 
-  if (
-    context.languagePreference !== "any" &&
-    movie.language === context.languagePreference
-  ) {
-    score += 2.5;
+  if (tagSet.has("dark")) {
+    return "horror";
   }
 
-  if (context.runtimePreference && movie.runtime === context.runtimePreference) {
-    score += 1.2;
+  if (tagSet.has("trueStory") || tagSet.has("inspiring")) {
+    return "biography";
   }
 
-  if (context.eraPreference && movie.era === context.eraPreference) {
-    score += 1;
-  }
-
-  score += Number(movie.rating || 0) / 20;
-
-  return score;
-}
-
-function rankMovies(movies, context) {
-  const ranked = movies
-    .map((movie) => ({
-      ...movie,
-      __score: scoreMovie(movie, context)
-    }))
-    .sort((a, b) => b.__score - a.__score || (b.rating || 0) - (a.rating || 0));
-
-  const uniqueMovies = [];
-  const seenIds = new Set();
-
-  for (const movie of ranked) {
-    if (seenIds.has(movie.id)) {
-      continue;
-    }
-
-    seenIds.add(movie.id);
-    const { __score, ...moviePayload } = movie;
-    uniqueMovies.push(moviePayload);
-
-    if (uniqueMovies.length >= RESULT_LIMIT) {
-      break;
-    }
-  }
-
-  return uniqueMovies;
-}
-
-function buildReason({
-  primaryGenre,
-  secondaryGenre,
-  languagePreference,
-  preferredTags
-}) {
-  const reasonParts = [`you strongly matched ${primaryGenre.label}`];
-
-  if (secondaryGenre) {
-    reasonParts.push(`you also aligned with ${secondaryGenre.label.toLowerCase()}`);
-  }
-
-  if (languagePreference && languagePreference !== "any") {
-    reasonParts.push(
-      `you preferred ${LANGUAGE_LABELS[languagePreference] || languagePreference}`
-    );
-  }
-
-  if (preferredTags.length) {
-    const labels = preferredTags
-      .map((tag) => PREFERENCE_TAG_LABELS[tag] || tag)
-      .join(", ");
-    reasonParts.push(`your interests included ${labels}`);
-  }
-
-  return `Recommended because ${reasonParts.join("; ")}.`;
+  return null;
 }
 
 function mapTmdbMovie(movie) {
@@ -252,15 +131,32 @@ function mapTmdbMovie(movie) {
     rating: movie.vote_average,
     tmdbUrl: `https://www.themoviedb.org/movie/${movie.id}`,
     genres: mappedGenres,
-    tags: [],
-    language: movie.original_language || "unknown"
+    tags: inferTagsFromText(movie.title || "", movie.overview || ""),
+    language: movie.original_language || "unknown",
+    runtime: null,
+    era: inferEraFromDate(movie.release_date)
   };
+}
+
+async function fetchJson(url) {
+  const response = await fetch(url, {
+    headers: {
+      Accept: "application/json"
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`TMDB request failed with status ${response.status}`);
+  }
+
+  return response.json();
 }
 
 async function fetchMoviesFromTmdb({
   primaryGenreId,
   secondaryGenreId,
-  languagePreference
+  languagePreference,
+  focusTags
 }) {
   const apiKey = Deno.env.get("TMDB_API_KEY");
 
@@ -274,7 +170,6 @@ async function fetchMoviesFromTmdb({
     include_video: "false",
     language: "en-US",
     sort_by: "popularity.desc",
-    page: "1",
     vote_count_gte: "120",
     with_genres: [primaryGenreId, secondaryGenreId].filter(Boolean).join(",")
   });
@@ -283,53 +178,70 @@ async function fetchMoviesFromTmdb({
     params.set("with_original_language", languagePreference);
   }
 
-  const response = await fetch(
-    `https://api.themoviedb.org/3/discover/movie?${params.toString()}`,
-    {
-      headers: {
-        Accept: "application/json"
-      }
-    }
-  );
+  const discoverPageOne = new URLSearchParams(params);
+  discoverPageOne.set("page", "1");
 
-  if (!response.ok) {
-    throw new Error(`TMDB request failed with status ${response.status}`);
+  const discoverPageTwo = new URLSearchParams(params);
+  discoverPageTwo.set("page", "2");
+
+  const urls = [
+    `https://api.themoviedb.org/3/discover/movie?${discoverPageOne.toString()}`,
+    `https://api.themoviedb.org/3/discover/movie?${discoverPageTwo.toString()}`
+  ];
+
+  const focusQuery = pickFocusQuery(focusTags);
+  if (focusQuery) {
+    const searchParams = new URLSearchParams({
+      api_key: apiKey,
+      include_adult: "false",
+      language: "en-US",
+      page: "1",
+      query: focusQuery
+    });
+
+    urls.push(`https://api.themoviedb.org/3/search/movie?${searchParams.toString()}`);
   }
 
-  const data = await response.json();
-  const movies = Array.isArray(data.results)
-    ? data.results.slice(0, 18).map(mapTmdbMovie)
-    : [];
+  const responses = await Promise.all(urls.map((url) => fetchJson(url)));
+  const rawMovies = responses.flatMap((payload) =>
+    Array.isArray(payload.results) ? payload.results : []
+  );
+
+  const uniqueRawMovies = [];
+  const seenIds = new Set();
+
+  for (const movie of rawMovies) {
+    if (seenIds.has(movie.id)) {
+      continue;
+    }
+
+    seenIds.add(movie.id);
+    uniqueRawMovies.push(movie);
+  }
+
+  const mappedMovies = uniqueRawMovies.map(mapTmdbMovie);
+
+  const languageFilteredMovies =
+    languagePreference && languagePreference !== "any"
+      ? mappedMovies.filter((movie) => movie.language === languagePreference)
+      : mappedMovies;
 
   return {
     source: "tmdb",
-    movies
+    movies: (languageFilteredMovies.length ? languageFilteredMovies : mappedMovies).slice(
+      0,
+      36
+    )
   };
 }
 
 async function recommendFromAnswers(answers) {
-  const {
-    scores,
-    tagCounts,
-    languagePreference,
-    runtimePreference,
-    eraPreference
-  } = parseAnswers(answers);
+  const profile = parseAnswers(answers);
+  const rankContext = buildRankContext(profile);
 
-  const [primaryKey, secondaryKey] = selectTopGenres(scores);
-  const preferredTags = getTopPreferenceTags(tagCounts);
-
+  const { primaryKey, secondaryKey } = rankContext;
   const primaryGenre = GENRES[primaryKey];
   const secondaryGenre = secondaryKey ? GENRES[secondaryKey] : null;
-
-  const rankContext = {
-    primaryKey,
-    secondaryKey,
-    preferredTags,
-    languagePreference,
-    runtimePreference,
-    eraPreference
-  };
 
   let movies = [];
   let source = "fallback";
@@ -338,7 +250,8 @@ async function recommendFromAnswers(answers) {
     const tmdbResponse = await fetchMoviesFromTmdb({
       primaryGenreId: primaryGenre.id,
       secondaryGenreId: secondaryGenre ? secondaryGenre.id : null,
-      languagePreference
+      languagePreference: rankContext.languagePreference,
+      focusTags: rankContext.focusTags
     });
 
     source = tmdbResponse.source;
@@ -359,15 +272,11 @@ async function recommendFromAnswers(answers) {
     recommendationReason: buildReason({
       primaryGenre,
       secondaryGenre,
-      languagePreference,
-      preferredTags
+      languagePreference: rankContext.languagePreference,
+      preferredTags: rankContext.preferredTags,
+      focusLabel: rankContext.focusLabel
     }),
-    appliedPreferences: {
-      language: LANGUAGE_LABELS[languagePreference] || LANGUAGE_LABELS.any,
-      tags: preferredTags.map((tag) => PREFERENCE_TAG_LABELS[tag] || tag),
-      runtime: runtimePreference || "Any",
-      era: eraPreference || "Any"
-    },
+    appliedPreferences: formatAppliedPreferences(rankContext),
     movies
   };
 }
