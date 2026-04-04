@@ -25,38 +25,38 @@ function inferEraFromDate(releaseDate) {
   return "classic";
 }
 
-function pickFocusQuery(focusTags = []) {
+function pickFocusQueries(focusTags = []) {
   const tagSet = new Set(focusTags);
 
   if (tagSet.has("motorsport") || tagSet.has("cars")) {
-    return "racing";
+    return ["formula 1", "racing", "grand prix"];
   }
 
   if (tagSet.has("sports")) {
-    return "sports";
+    return ["sports"];
   }
 
   if (tagSet.has("superhero")) {
-    return "superhero";
+    return ["superhero"];
   }
 
   if (tagSet.has("detective")) {
-    return "detective";
+    return ["detective"];
   }
 
   if (tagSet.has("anime")) {
-    return "anime";
+    return ["anime"];
   }
 
   if (tagSet.has("dark")) {
-    return "horror";
+    return ["horror"];
   }
 
   if (tagSet.has("trueStory") || tagSet.has("inspiring")) {
-    return "biography";
+    return ["biography", "based on a true story"];
   }
 
-  return null;
+  return [];
 }
 
 function buildPagedUrls(baseUrl, params, startPage, endPage) {
@@ -143,7 +143,10 @@ export async function fetchMoviesFromTmdb({
     with_genres: String(primaryGenreId)
   });
 
-  if (languagePreference && languagePreference !== "any") {
+  const shouldHardFilterLanguage =
+    languagePreference && languagePreference !== "any" && !(focusTags || []).length;
+
+  if (shouldHardFilterLanguage) {
     strictParams.set("with_original_language", languagePreference);
     broadParams.set("with_original_language", languagePreference);
   }
@@ -158,17 +161,19 @@ export async function fetchMoviesFromTmdb({
     );
   }
 
-  const focusQuery = pickFocusQuery(focusTags);
-  if (focusQuery) {
-    const searchParams = new URLSearchParams({
-      api_key: apiKey,
-      include_adult: "false",
-      language: "en-US",
-      page: "1",
-      query: focusQuery
-    });
+  const focusQueries = pickFocusQueries(focusTags);
+  for (const query of focusQueries) {
+    for (let page = 1; page <= 2; page += 1) {
+      const searchParams = new URLSearchParams({
+        api_key: apiKey,
+        include_adult: "false",
+        language: "en-US",
+        page: String(page),
+        query
+      });
 
-    discoverUrls.push(`${TMDB_BASE_URL}/search/movie?${searchParams.toString()}`);
+      discoverUrls.push(`${TMDB_BASE_URL}/search/movie?${searchParams.toString()}`);
+    }
   }
 
   const responses = await Promise.all(discoverUrls.map((url) => fetchJson(url)));
@@ -190,15 +195,11 @@ export async function fetchMoviesFromTmdb({
 
   const mappedMovies = uniqueRawMovies.map(mapTmdbMovie);
 
-  const languageFilteredMovies =
-    languagePreference && languagePreference !== "any"
-      ? mappedMovies.filter((movie) => movie.language === languagePreference)
-      : mappedMovies;
-
-  const movies = (languageFilteredMovies.length ? languageFilteredMovies : mappedMovies).slice(
-    0,
-    72
-  );
+  const movies = shouldHardFilterLanguage
+    ? mappedMovies
+        .filter((movie) => movie.language === languagePreference)
+        .slice(0, 72)
+    : mappedMovies.slice(0, 72);
 
   return {
     source: "tmdb",

@@ -5,15 +5,33 @@ import {
 } from "../data/questions.js";
 import { fetchMoviesFromTmdb } from "./tmdbClient.js";
 import {
+  buildConstraintNotice,
   buildRankContext,
   buildReason,
   formatAppliedPreferences,
   parseAnswers,
-  rankMovies
+  rankMoviesDetailed
 } from "./recommendationCore.js";
 
 if (!QUESTIONS.length) {
   throw new Error("Question bank is empty. Cannot run recommender.");
+}
+
+function mergeMoviePools(primaryMovies, secondaryMovies) {
+  const merged = [];
+  const seen = new Set();
+
+  for (const movie of [...primaryMovies, ...secondaryMovies]) {
+    const key = `${movie.id}:${movie.title}`;
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    merged.push(movie);
+  }
+
+  return merged;
 }
 
 export async function recommendFromAnswers(answers) {
@@ -27,6 +45,7 @@ export async function recommendFromAnswers(answers) {
 
   let movies = [];
   let source = "fallback";
+  let rankingSignals = null;
 
   try {
     const tmdbResponse = await fetchMoviesFromTmdb({
@@ -37,13 +56,28 @@ export async function recommendFromAnswers(answers) {
     });
 
     source = tmdbResponse.source;
-    movies = rankMovies(tmdbResponse.movies, rankContext);
+    let rankingResult = rankMoviesDetailed(tmdbResponse.movies, rankContext);
+    movies = rankingResult.movies;
+    rankingSignals = rankingResult.rankingSignals;
+
+    if (rankContext.focusTags.length && rankingSignals.focusSupplyLow) {
+      const blendedPool = mergeMoviePools(tmdbResponse.movies, FALLBACK_MOVIES);
+      rankingResult = rankMoviesDetailed(blendedPool, rankContext);
+      movies = rankingResult.movies;
+      rankingSignals = {
+        ...rankingResult.rankingSignals,
+        languageRelaxed:
+          rankingSignals.languageRelaxed || rankingResult.rankingSignals.languageRelaxed
+      };
+    }
   } catch (error) {
     source = "fallback";
   }
 
   if (!movies.length) {
-    movies = rankMovies(FALLBACK_MOVIES, rankContext);
+    const rankingResult = rankMoviesDetailed(FALLBACK_MOVIES, rankContext);
+    movies = rankingResult.movies;
+    rankingSignals = rankingResult.rankingSignals;
     source = "fallback";
   }
 
@@ -58,6 +92,7 @@ export async function recommendFromAnswers(answers) {
       preferredTags: rankContext.preferredTags,
       focusLabel: rankContext.focusLabel
     }),
+    constraintNotice: buildConstraintNotice(rankContext, rankingSignals),
     appliedPreferences: formatAppliedPreferences(rankContext),
     movies
   };

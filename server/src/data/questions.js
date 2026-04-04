@@ -137,7 +137,7 @@ export const QUESTIONS = [
         id: "motorsport",
         text: "Motorsport and racing",
         weights: { action: 3, drama: 2, adventure: 1 },
-        tags: ["motorsport", "sports", "cars", "trueStory"]
+        tags: ["motorsport", "cars"]
       },
       {
         id: "superhero",

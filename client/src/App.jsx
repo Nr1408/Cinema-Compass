@@ -327,6 +327,9 @@ export default function App() {
               {result.recommendationReason ? (
                 <p className="reason-note">{result.recommendationReason}</p>
               ) : null}
+              {result.constraintNotice ? (
+                <p className="constraint-note">{result.constraintNotice}</p>
+              ) : null}
               {result.appliedPreferences ? (
                 <div className="preference-pills">
                   <span>{result.appliedPreferences.language}</span>

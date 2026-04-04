@@ -35,6 +35,9 @@ const MODEL_WEIGHTS = {
   constraintFitBoost: 9
 };
 
+const FOCUS_PRIORITY_SLOTS = 3;
+const SOFT_LANGUAGE_MIN_FOCUS_MATCHES = 2;
+
 const QUESTION_IMPORTANCE = {
   focus: 4.2,
   language: 3,
@@ -239,6 +242,23 @@ function computeWeightedTagOverlap(movieTags, tagScores) {
   return matchedTotal / desiredTotal;
 }
 
+function isLanguageMatch(movie, context) {
+  if (!context.languagePreference || context.languagePreference === "any") {
+    return true;
+  }
+
+  return movie.language === context.languagePreference;
+}
+
+function isFocusMatch(movie, context) {
+  if (!context.focusTags.length) {
+    return true;
+  }
+
+  const movieTags = Array.isArray(movie.tags) ? movie.tags : [];
+  return context.focusTags.some((tag) => movieTags.includes(tag));
+}
+
 function computeConstraintFit(movie, context) {
   let slots = 0;
   let matched = 0;
@@ -246,7 +266,7 @@ function computeConstraintFit(movie, context) {
   if (context.languagePreference && context.languagePreference !== "any") {
     slots += 1;
 
-    if (movie.language === context.languagePreference) {
+    if (isLanguageMatch(movie, context)) {
       matched += 1;
     } else if (!movie.language || movie.language === "unknown") {
       matched += 0.35;
@@ -287,7 +307,7 @@ export function inferTagsFromText(title = "", overview = "") {
       /\brace\s?car\b/,
       /\bpit stop\b/
     ],
-    cars: [/\bcar\b/, /\bcars\b/, /\brace\s?car\b/, /\bdriver\b/, /\bspeedway\b/],
+    cars: [/\brace\s?car\b/, /\bracing\b/, /\bracetrack\b/, /\bspeedway\b/],
     sports: [
       /\bathlete\b/,
       /\bteam\b/,
@@ -425,38 +445,69 @@ export function scoreMovie(movie, context) {
   return score;
 }
 
-export function rankMovies(movies, context, limit = RESULT_LIMIT) {
+export function rankMoviesDetailed(movies, context, limit = RESULT_LIMIT) {
+  const rankingSignals = {
+    languageRelaxed: false,
+    eraRelaxed: false,
+    focusSupplyLow: false,
+    focusPriorityEnforced: false,
+    topFocusMatches: null,
+    topLanguageMatches: null
+  };
+
   const baseMovies = Array.isArray(movies) ? movies : [];
+  const reservoirSize = Math.max(limit * 3, 24);
   let candidateMovies = baseMovies;
   const minConstraintFit =
     context.strictness >= 0.82 ? 0.84 : context.strictness >= 0.68 ? 0.72 : 0.52;
 
   if (context.languagePreference && context.languagePreference !== "any") {
-    const languageMatches = candidateMovies.filter(
-      (movie) => movie.language === context.languagePreference
+    const languageMatches = candidateMovies.filter((movie) =>
+      isLanguageMatch(movie, context)
     );
+    let shouldApplyLanguageFilter = languageMatches.length >= Math.max(3, limit - 1);
 
-    if (languageMatches.length >= Math.max(3, limit - 1)) {
+    if (context.focusTags.length) {
+      const focusLanguageMatches = languageMatches.filter((movie) =>
+        isFocusMatch(movie, context)
+      );
+
+      if (focusLanguageMatches.length < SOFT_LANGUAGE_MIN_FOCUS_MATCHES) {
+        shouldApplyLanguageFilter = false;
+        rankingSignals.languageRelaxed = true;
+      }
+    }
+
+    if (shouldApplyLanguageFilter) {
       candidateMovies = languageMatches;
     }
   }
 
   if (context.eraPreference) {
     const eraMatches = candidateMovies.filter((movie) => movie.era === context.eraPreference);
+    let shouldApplyEraFilter = eraMatches.length >= Math.ceil(limit / 2);
 
-    if (eraMatches.length >= Math.ceil(limit / 2)) {
+    if (context.focusTags.length) {
+      const focusEraMatches = eraMatches.filter((movie) => isFocusMatch(movie, context));
+
+      if (focusEraMatches.length < SOFT_LANGUAGE_MIN_FOCUS_MATCHES) {
+        shouldApplyEraFilter = false;
+        rankingSignals.eraRelaxed = true;
+      }
+    }
+
+    if (shouldApplyEraFilter) {
       candidateMovies = eraMatches;
     }
   }
 
   if (context.focusTags.length) {
-    const focusMatches = candidateMovies.filter((movie) => {
-      const tags = Array.isArray(movie.tags) ? movie.tags : [];
-      return context.focusTags.some((tag) => tags.includes(tag));
-    });
+    const focusMatches = candidateMovies.filter((movie) => isFocusMatch(movie, context));
 
     if (focusMatches.length >= Math.ceil(limit / 2)) {
       candidateMovies = focusMatches;
+    } else if (focusMatches.length < Math.min(FOCUS_PRIORITY_SLOTS, limit)) {
+      rankingSignals.focusSupplyLow = true;
     }
   }
 
@@ -483,7 +534,6 @@ export function rankMovies(movies, context, limit = RESULT_LIMIT) {
       );
 
   const ranked = scoreAndSort(candidateMovies);
-
   const uniqueMovies = [];
   const seenIds = new Set();
 
@@ -496,7 +546,7 @@ export function rankMovies(movies, context, limit = RESULT_LIMIT) {
     const { __score, __constraintFit, ...moviePayload } = movie;
     uniqueMovies.push(moviePayload);
 
-    if (uniqueMovies.length >= limit) {
+    if (uniqueMovies.length >= reservoirSize) {
       break;
     }
   }
@@ -514,13 +564,115 @@ export function rankMovies(movies, context, limit = RESULT_LIMIT) {
       const { __score, __constraintFit, ...moviePayload } = movie;
       uniqueMovies.push(moviePayload);
 
-      if (uniqueMovies.length >= limit) {
+      if (uniqueMovies.length >= reservoirSize) {
         break;
       }
     }
   }
 
-  return uniqueMovies;
+  if (context.focusTags.length && uniqueMovies.length) {
+    const requiredFocusSlots = Math.min(FOCUS_PRIORITY_SLOTS, limit);
+    const focusRankedMovies = uniqueMovies.filter((movie) => isFocusMatch(movie, context));
+
+    if (focusRankedMovies.length < requiredFocusSlots) {
+      const existingFocusKeys = new Set(
+        focusRankedMovies.map((movie) => `${movie.id}:${movie.title}`)
+      );
+
+      const additionalFocusMovies = scoreAndSort(baseMovies)
+        .filter((movie) => isFocusMatch(movie, context))
+        .map(({ __score, __constraintFit, ...moviePayload }) => moviePayload);
+
+      for (const movie of additionalFocusMovies) {
+        const key = `${movie.id}:${movie.title}`;
+        if (existingFocusKeys.has(key)) {
+          continue;
+        }
+
+        existingFocusKeys.add(key);
+        focusRankedMovies.push(movie);
+
+        if (focusRankedMovies.length >= requiredFocusSlots) {
+          break;
+        }
+      }
+    }
+
+    const nonFocusRankedMovies = uniqueMovies.filter(
+      (movie) => !isFocusMatch(movie, context)
+    );
+
+    if (focusRankedMovies.length >= requiredFocusSlots) {
+      uniqueMovies.splice(
+        0,
+        uniqueMovies.length,
+        ...[...focusRankedMovies, ...nonFocusRankedMovies].slice(0, limit)
+      );
+      rankingSignals.focusPriorityEnforced = true;
+    } else if (focusRankedMovies.length) {
+      uniqueMovies.splice(
+        0,
+        uniqueMovies.length,
+        ...[...focusRankedMovies, ...nonFocusRankedMovies].slice(0, limit)
+      );
+      rankingSignals.focusSupplyLow = true;
+    } else {
+      rankingSignals.focusSupplyLow = true;
+    }
+  }
+
+  const finalMovies = uniqueMovies.slice(0, limit);
+  const topSlice = finalMovies.slice(0, Math.min(5, finalMovies.length));
+
+  if (context.focusTags.length) {
+    rankingSignals.topFocusMatches = topSlice.filter((movie) => isFocusMatch(movie, context))
+      .length;
+  }
+
+  if (context.languagePreference && context.languagePreference !== "any") {
+    rankingSignals.topLanguageMatches = topSlice.filter((movie) =>
+      isLanguageMatch(movie, context)
+    ).length;
+  }
+
+  return {
+    movies: finalMovies,
+    rankingSignals
+  };
+}
+
+export function rankMovies(movies, context, limit = RESULT_LIMIT) {
+  return rankMoviesDetailed(movies, context, limit).movies;
+}
+
+export function buildConstraintNotice(context, rankingSignals) {
+  if (!rankingSignals) {
+    return null;
+  }
+
+  const notes = [];
+
+  if (context.focusTags.length && rankingSignals.focusSupplyLow) {
+    notes.push(
+      `Limited ${
+        context.focusLabel ? context.focusLabel.toLowerCase() : "focus-matched"
+      } titles were found, so broader options were added after focus-first picks.`
+    );
+  }
+
+  if (context.languagePreference !== "any" && rankingSignals.languageRelaxed) {
+    notes.push("Language preference was softened to preserve focus accuracy.");
+  }
+
+  if (context.eraPreference && rankingSignals.eraRelaxed) {
+    notes.push("Era preference was softened to preserve focus accuracy.");
+  }
+
+  if (!notes.length) {
+    return null;
+  }
+
+  return `Note: ${notes.join(" ")}`;
 }
 
 export function buildReason({

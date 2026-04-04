@@ -233,6 +233,13 @@ button:disabled {
   line-height: 1.45;
 }
 
+.constraint-note {
+  margin-top: 0.45rem !important;
+  color: #ffdfad !important;
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
 .preference-pills {
   margin-top: 0.7rem;
   display: flex;

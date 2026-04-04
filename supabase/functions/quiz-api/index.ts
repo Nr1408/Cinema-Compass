@@ -4,12 +4,13 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { FALLBACK_MOVIES } from "../../../server/src/data/fallbackMovies.js";
 import { GENRES, QUESTIONS } from "../../../server/src/data/questions.js";
 import {
+  buildConstraintNotice,
   buildRankContext,
   buildReason,
   formatAppliedPreferences,
   inferTagsFromText,
   parseAnswers,
-  rankMovies
+  rankMoviesDetailed
 } from "../../../server/src/services/recommendationCore.js";
 
 const GENRE_ID_TO_KEY = Object.fromEntries(
@@ -63,6 +64,23 @@ function getPublicQuestions() {
   }));
 }
 
+function mergeMoviePools(primaryMovies, secondaryMovies) {
+  const merged = [];
+  const seen = new Set();
+
+  for (const movie of [...primaryMovies, ...secondaryMovies]) {
+    const key = `${movie.id}:${movie.title}`;
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    merged.push(movie);
+  }
+
+  return merged;
+}
+
 function inferEraFromDate(releaseDate) {
   const year = Number(String(releaseDate || "").slice(0, 4));
 
@@ -81,38 +99,38 @@ function inferEraFromDate(releaseDate) {
   return "classic";
 }
 
-function pickFocusQuery(focusTags = []) {
+function pickFocusQueries(focusTags = []) {
   const tagSet = new Set(focusTags);
 
   if (tagSet.has("motorsport") || tagSet.has("cars")) {
-    return "racing";
+    return ["formula 1", "racing", "grand prix"];
   }
 
   if (tagSet.has("sports")) {
-    return "sports";
+    return ["sports"];
   }
 
   if (tagSet.has("superhero")) {
-    return "superhero";
+    return ["superhero"];
   }
 
   if (tagSet.has("detective")) {
-    return "detective";
+    return ["detective"];
   }
 
   if (tagSet.has("anime")) {
-    return "anime";
+    return ["anime"];
   }
 
   if (tagSet.has("dark")) {
-    return "horror";
+    return ["horror"];
   }
 
   if (tagSet.has("trueStory") || tagSet.has("inspiring")) {
-    return "biography";
+    return ["biography", "based on a true story"];
   }
 
-  return null;
+  return [];
 }
 
 function buildPagedUrls(baseUrl, params, startPage, endPage) {
@@ -197,7 +215,10 @@ async function fetchMoviesFromTmdb({
     with_genres: String(primaryGenreId)
   });
 
-  if (languagePreference && languagePreference !== "any") {
+  const shouldHardFilterLanguage =
+    languagePreference && languagePreference !== "any" && !(focusTags || []).length;
+
+  if (shouldHardFilterLanguage) {
     strictParams.set("with_original_language", languagePreference);
     broadParams.set("with_original_language", languagePreference);
   }
@@ -212,17 +233,19 @@ async function fetchMoviesFromTmdb({
     );
   }
 
-  const focusQuery = pickFocusQuery(focusTags);
-  if (focusQuery) {
-    const searchParams = new URLSearchParams({
-      api_key: apiKey,
-      include_adult: "false",
-      language: "en-US",
-      page: "1",
-      query: focusQuery
-    });
+  const focusQueries = pickFocusQueries(focusTags);
+  for (const query of focusQueries) {
+    for (let page = 1; page <= 2; page += 1) {
+      const searchParams = new URLSearchParams({
+        api_key: apiKey,
+        include_adult: "false",
+        language: "en-US",
+        page: String(page),
+        query
+      });
 
-    urls.push(`https://api.themoviedb.org/3/search/movie?${searchParams.toString()}`);
+      urls.push(`https://api.themoviedb.org/3/search/movie?${searchParams.toString()}`);
+    }
   }
 
   const responses = await Promise.all(urls.map((url) => fetchJson(url)));
@@ -244,17 +267,11 @@ async function fetchMoviesFromTmdb({
 
   const mappedMovies = uniqueRawMovies.map(mapTmdbMovie);
 
-  const languageFilteredMovies =
-    languagePreference && languagePreference !== "any"
-      ? mappedMovies.filter((movie) => movie.language === languagePreference)
-      : mappedMovies;
-
   return {
     source: "tmdb",
-    movies: (languageFilteredMovies.length ? languageFilteredMovies : mappedMovies).slice(
-      0,
-      72
-    )
+    movies: shouldHardFilterLanguage
+      ? mappedMovies.filter((movie) => movie.language === languagePreference).slice(0, 72)
+      : mappedMovies.slice(0, 72)
   };
 }
 
@@ -268,6 +285,7 @@ async function recommendFromAnswers(answers) {
 
   let movies = [];
   let source = "fallback";
+  let rankingSignals = null;
 
   try {
     const tmdbResponse = await fetchMoviesFromTmdb({
@@ -278,13 +296,28 @@ async function recommendFromAnswers(answers) {
     });
 
     source = tmdbResponse.source;
-    movies = rankMovies(tmdbResponse.movies, rankContext);
+    let rankingResult = rankMoviesDetailed(tmdbResponse.movies, rankContext);
+    movies = rankingResult.movies;
+    rankingSignals = rankingResult.rankingSignals;
+
+    if (rankContext.focusTags.length && rankingSignals.focusSupplyLow) {
+      const blendedPool = mergeMoviePools(tmdbResponse.movies, FALLBACK_MOVIES);
+      rankingResult = rankMoviesDetailed(blendedPool, rankContext);
+      movies = rankingResult.movies;
+      rankingSignals = {
+        ...rankingResult.rankingSignals,
+        languageRelaxed:
+          rankingSignals.languageRelaxed || rankingResult.rankingSignals.languageRelaxed
+      };
+    }
   } catch {
     source = "fallback";
   }
 
   if (!movies.length) {
-    movies = rankMovies(FALLBACK_MOVIES, rankContext);
+    const rankingResult = rankMoviesDetailed(FALLBACK_MOVIES, rankContext);
+    movies = rankingResult.movies;
+    rankingSignals = rankingResult.rankingSignals;
     source = "fallback";
   }
 
@@ -299,6 +332,7 @@ async function recommendFromAnswers(answers) {
       preferredTags: rankContext.preferredTags,
       focusLabel: rankContext.focusLabel
     }),
+    constraintNotice: buildConstraintNotice(rankContext, rankingSignals),
     appliedPreferences: formatAppliedPreferences(rankContext),
     movies
   };
