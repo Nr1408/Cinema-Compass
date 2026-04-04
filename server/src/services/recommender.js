@@ -1,8 +1,14 @@
-import { FALLBACK_MOVIES_BY_GENRE } from "../data/fallbackMovies.js";
-import { GENRES, QUESTIONS } from "../data/questions.js";
+import { FALLBACK_MOVIES } from "../data/fallbackMovies.js";
+import {
+  GENRES,
+  LANGUAGE_LABELS,
+  PREFERENCE_TAG_LABELS,
+  QUESTIONS
+} from "../data/questions.js";
 import { fetchMoviesFromTmdb } from "./tmdbClient.js";
 
 const OPTION_LOOKUP = new Map();
+const RESULT_LIMIT = 5;
 
 for (const question of QUESTIONS) {
   for (const option of question.options) {
@@ -17,8 +23,13 @@ function createInitialScores() {
   }, {});
 }
 
-function scoreAnswers(answers) {
+function parseAnswers(answers) {
   const scores = createInitialScores();
+  const tagCounts = {};
+
+  let languagePreference = "any";
+  let runtimePreference = null;
+  let eraPreference = null;
 
   for (const [questionId, optionId] of Object.entries(answers || {})) {
     const option = OPTION_LOOKUP.get(`${questionId}:${optionId}`);
@@ -29,9 +40,31 @@ function scoreAnswers(answers) {
     for (const [genreKey, weight] of Object.entries(option.weights)) {
       scores[genreKey] = (scores[genreKey] || 0) + Number(weight || 0);
     }
+
+    for (const tag of option.tags || []) {
+      tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+    }
+
+    if (option.language) {
+      languagePreference = option.language;
+    }
+
+    if (option.runtime) {
+      runtimePreference = option.runtime;
+    }
+
+    if (option.era) {
+      eraPreference = option.era;
+    }
   }
 
-  return scores;
+  return {
+    scores,
+    tagCounts,
+    languagePreference,
+    runtimePreference,
+    eraPreference
+  };
 }
 
 function selectTopGenres(scores) {
@@ -47,20 +80,132 @@ function selectTopGenres(scores) {
   return [primaryKey, secondaryKey];
 }
 
-function getFallbackMovies(primaryKey) {
-  return (
-    FALLBACK_MOVIES_BY_GENRE[primaryKey] ||
-    FALLBACK_MOVIES_BY_GENRE.default ||
-    []
-  ).slice(0, 8);
+function getTopPreferenceTags(tagCounts) {
+  return Object.entries(tagCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([tag]) => tag);
+}
+
+function scoreMovie(movie, context) {
+  const movieGenres = Array.isArray(movie.genres) ? movie.genres : [];
+  const movieTags = Array.isArray(movie.tags) ? movie.tags : [];
+
+  let score = 0;
+
+  if (movieGenres.includes(context.primaryKey)) {
+    score += 8;
+  }
+
+  if (context.secondaryKey && movieGenres.includes(context.secondaryKey)) {
+    score += 4;
+  }
+
+  for (const tag of context.preferredTags) {
+    if (movieTags.includes(tag)) {
+      score += 3;
+    }
+  }
+
+  if (
+    context.languagePreference !== "any" &&
+    movie.language === context.languagePreference
+  ) {
+    score += 2.5;
+  }
+
+  if (context.runtimePreference && movie.runtime === context.runtimePreference) {
+    score += 1.2;
+  }
+
+  if (context.eraPreference && movie.era === context.eraPreference) {
+    score += 1;
+  }
+
+  score += Number(movie.rating || 0) / 20;
+
+  return score;
+}
+
+function rankMovies(movies, context) {
+  const ranked = movies
+    .map((movie) => ({
+      ...movie,
+      __score: scoreMovie(movie, context)
+    }))
+    .sort((a, b) => b.__score - a.__score || (b.rating || 0) - (a.rating || 0));
+
+  const uniqueMovies = [];
+  const seenIds = new Set();
+
+  for (const movie of ranked) {
+    if (seenIds.has(movie.id)) {
+      continue;
+    }
+
+    seenIds.add(movie.id);
+    const { __score, ...moviePayload } = movie;
+    uniqueMovies.push(moviePayload);
+
+    if (uniqueMovies.length >= RESULT_LIMIT) {
+      break;
+    }
+  }
+
+  return uniqueMovies;
+}
+
+function buildReason({
+  primaryGenre,
+  secondaryGenre,
+  languagePreference,
+  preferredTags
+}) {
+  const reasonParts = [`you strongly matched ${primaryGenre.label}`];
+
+  if (secondaryGenre) {
+    reasonParts.push(`you also aligned with ${secondaryGenre.label.toLowerCase()}`);
+  }
+
+  if (languagePreference && languagePreference !== "any") {
+    reasonParts.push(
+      `you preferred ${LANGUAGE_LABELS[languagePreference] || languagePreference}`
+    );
+  }
+
+  if (preferredTags.length) {
+    const labels = preferredTags
+      .map((tag) => PREFERENCE_TAG_LABELS[tag] || tag)
+      .join(", ");
+    reasonParts.push(`your interests included ${labels}`);
+  }
+
+  return `Recommended because ${reasonParts.join("; ")}.`;
 }
 
 export async function recommendFromAnswers(answers) {
-  const scores = scoreAnswers(answers);
+  const {
+    scores,
+    tagCounts,
+    languagePreference,
+    runtimePreference,
+    eraPreference
+  } = parseAnswers(answers);
+
   const [primaryKey, secondaryKey] = selectTopGenres(scores);
+  const preferredTags = getTopPreferenceTags(tagCounts);
 
   const primaryGenre = GENRES[primaryKey];
   const secondaryGenre = secondaryKey ? GENRES[secondaryKey] : null;
+
+  const rankContext = {
+    primaryKey,
+    secondaryKey,
+    preferredTags,
+    languagePreference,
+    runtimePreference,
+    eraPreference
+  };
 
   let movies = [];
   let source = "fallback";
@@ -68,17 +213,18 @@ export async function recommendFromAnswers(answers) {
   try {
     const tmdbResponse = await fetchMoviesFromTmdb({
       primaryGenreId: primaryGenre.id,
-      secondaryGenreId: secondaryGenre ? secondaryGenre.id : null
+      secondaryGenreId: secondaryGenre ? secondaryGenre.id : null,
+      languagePreference
     });
 
     source = tmdbResponse.source;
-    movies = tmdbResponse.movies;
+    movies = rankMovies(tmdbResponse.movies, rankContext);
   } catch (error) {
     source = "fallback";
   }
 
   if (!movies.length) {
-    movies = getFallbackMovies(primaryKey);
+    movies = rankMovies(FALLBACK_MOVIES, rankContext);
     source = "fallback";
   }
 
@@ -86,6 +232,18 @@ export async function recommendFromAnswers(answers) {
     movieType: primaryGenre.label,
     backupType: secondaryGenre ? secondaryGenre.label : null,
     source,
+    recommendationReason: buildReason({
+      primaryGenre,
+      secondaryGenre,
+      languagePreference,
+      preferredTags
+    }),
+    appliedPreferences: {
+      language: LANGUAGE_LABELS[languagePreference] || LANGUAGE_LABELS.any,
+      tags: preferredTags.map((tag) => PREFERENCE_TAG_LABELS[tag] || tag),
+      runtime: runtimePreference || "Any",
+      era: eraPreference || "Any"
+    },
     movies
   };
 }

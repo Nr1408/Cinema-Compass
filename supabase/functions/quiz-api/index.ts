@@ -1,334 +1,20 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
-type GenreMap = Record<string, { id: number; label: string }>;
-type Question = {
-  id: string;
-  title: string;
-  options: Array<{
-    id: string;
-    text: string;
-    weights: Record<string, number>;
-  }>;
-};
+import { FALLBACK_MOVIES } from "../../../server/src/data/fallbackMovies.js";
+import {
+  GENRES,
+  LANGUAGE_LABELS,
+  PREFERENCE_TAG_LABELS,
+  QUESTIONS
+} from "../../../server/src/data/questions.js";
 
-type Movie = {
-  id: string | number;
-  title: string;
-  overview: string;
-  posterPath: string;
-  releaseDate: string;
-  rating: number;
-  tmdbUrl: string;
-};
+const OPTION_LOOKUP = new Map();
+const RESULT_LIMIT = 5;
 
-const GENRES: GenreMap = {
-  action: { id: 28, label: "Action" },
-  adventure: { id: 12, label: "Adventure" },
-  animation: { id: 16, label: "Animation" },
-  comedy: { id: 35, label: "Comedy" },
-  crime: { id: 80, label: "Crime" },
-  drama: { id: 18, label: "Drama" },
-  family: { id: 10751, label: "Family" },
-  fantasy: { id: 14, label: "Fantasy" },
-  horror: { id: 27, label: "Horror" },
-  mystery: { id: 9648, label: "Mystery" },
-  romance: { id: 10749, label: "Romance" },
-  scienceFiction: { id: 878, label: "Science Fiction" },
-  thriller: { id: 53, label: "Thriller" }
-};
-
-const QUESTIONS: Question[] = [
-  {
-    id: "mood",
-    title: "How are you feeling right now?",
-    options: [
-      {
-        id: "energetic",
-        text: "Energetic and pumped",
-        weights: { action: 3, adventure: 2, thriller: 1 }
-      },
-      {
-        id: "cheerful",
-        text: "Cheerful and playful",
-        weights: { comedy: 3, family: 2, animation: 2 }
-      },
-      {
-        id: "emotional",
-        text: "Emotional and reflective",
-        weights: { drama: 3, romance: 2 }
-      },
-      {
-        id: "curious",
-        text: "Curious and thoughtful",
-        weights: { mystery: 2, scienceFiction: 3, fantasy: 2 }
-      },
-      {
-        id: "dark",
-        text: "In the mood for something intense",
-        weights: { thriller: 2, horror: 3, crime: 2 }
-      }
-    ]
-  },
-  {
-    id: "pace",
-    title: "What pace do you want?",
-    options: [
-      {
-        id: "fast",
-        text: "Fast and thrilling",
-        weights: { action: 3, thriller: 2, adventure: 2 }
-      },
-      {
-        id: "balanced",
-        text: "Balanced storytelling",
-        weights: { drama: 2, mystery: 2, comedy: 1 }
-      },
-      {
-        id: "slow",
-        text: "Slow and deep",
-        weights: { drama: 3, romance: 2, fantasy: 1 }
-      }
-    ]
-  },
-  {
-    id: "company",
-    title: "Who are you watching with?",
-    options: [
-      {
-        id: "solo",
-        text: "Just me",
-        weights: { mystery: 2, thriller: 2, scienceFiction: 2 }
-      },
-      {
-        id: "friends",
-        text: "Friends",
-        weights: { comedy: 3, action: 2, adventure: 2 }
-      },
-      {
-        id: "family",
-        text: "Family",
-        weights: { family: 3, animation: 3, fantasy: 2 }
-      },
-      {
-        id: "partner",
-        text: "Partner",
-        weights: { romance: 3, drama: 2, comedy: 1 }
-      }
-    ]
-  },
-  {
-    id: "world",
-    title: "Pick the world you want to enter",
-    options: [
-      {
-        id: "real",
-        text: "Realistic world",
-        weights: { drama: 3, crime: 2, thriller: 1 }
-      },
-      {
-        id: "epic",
-        text: "Epic and adventurous",
-        weights: { adventure: 3, fantasy: 2, action: 2 }
-      },
-      {
-        id: "futuristic",
-        text: "Future and technology",
-        weights: { scienceFiction: 3, action: 1, mystery: 1 }
-      },
-      {
-        id: "spooky",
-        text: "Dark and spooky",
-        weights: { horror: 3, mystery: 2, thriller: 1 }
-      }
-    ]
-  },
-  {
-    id: "ending",
-    title: "What ending style do you prefer?",
-    options: [
-      {
-        id: "feelgood",
-        text: "Happy and feel-good",
-        weights: { comedy: 2, family: 2, romance: 2 }
-      },
-      {
-        id: "twist",
-        text: "Unexpected twist",
-        weights: { mystery: 3, thriller: 2, crime: 1 }
-      },
-      {
-        id: "heavy",
-        text: "Powerful and emotional",
-        weights: { drama: 3, romance: 1, crime: 1 }
-      },
-      {
-        id: "fright",
-        text: "Scary and intense",
-        weights: { horror: 3, thriller: 2 }
-      }
-    ]
-  }
-];
-
-const FALLBACK_MOVIES_BY_GENRE: Record<string, Movie[]> = {
-  action: [
-    {
-      id: "fb-action-1",
-      title: "Mad Max: Fury Road",
-      overview:
-        "In a post-apocalyptic wasteland, Max teams up with Furiosa in a high-speed escape.",
-      posterPath: "/hA2ple9q4qnwxp3hKVNhroipsir.jpg",
-      releaseDate: "2015-05-13",
-      rating: 7.6,
-      tmdbUrl: "https://www.themoviedb.org/movie/76341"
-    },
-    {
-      id: "fb-action-2",
-      title: "John Wick",
-      overview:
-        "A retired hitman seeks vengeance after gangsters take away everything he loved.",
-      posterPath: "/fZPSd91yGE9fCcCe6OoQr6E3Bev.jpg",
-      releaseDate: "2014-10-22",
-      rating: 7.4,
-      tmdbUrl: "https://www.themoviedb.org/movie/245891"
-    }
-  ],
-  comedy: [
-    {
-      id: "fb-comedy-1",
-      title: "The Grand Budapest Hotel",
-      overview:
-        "A legendary concierge and his lobby boy are caught in a wildly funny adventure.",
-      posterPath: "/eWdyYQreja6JGCzqHWXpWHDrrPo.jpg",
-      releaseDate: "2014-02-26",
-      rating: 8,
-      tmdbUrl: "https://www.themoviedb.org/movie/120467"
-    },
-    {
-      id: "fb-comedy-2",
-      title: "Free Guy",
-      overview:
-        "A bank teller discovers he is actually an NPC inside an open-world video game.",
-      posterPath: "/xmbU4JTUm8rsdtn7Y3Fcm30GpeT.jpg",
-      releaseDate: "2021-08-11",
-      rating: 7.5,
-      tmdbUrl: "https://www.themoviedb.org/movie/550988"
-    }
-  ],
-  drama: [
-    {
-      id: "fb-drama-1",
-      title: "The Pursuit of Happyness",
-      overview:
-        "A struggling salesman fights to build a better life for himself and his son.",
-      posterPath: "/f6l9rghX8PjL1f9L8T8fNQ9fBfR.jpg",
-      releaseDate: "2006-12-14",
-      rating: 7.9,
-      tmdbUrl: "https://www.themoviedb.org/movie/1402"
-    },
-    {
-      id: "fb-drama-2",
-      title: "The Shawshank Redemption",
-      overview:
-        "Two imprisoned men form a profound friendship over years of hardship.",
-      posterPath: "/q6y0Go1tsGEsmtFryDOJo3dEmqu.jpg",
-      releaseDate: "1994-09-23",
-      rating: 8.7,
-      tmdbUrl: "https://www.themoviedb.org/movie/278"
-    }
-  ],
-  romance: [
-    {
-      id: "fb-romance-1",
-      title: "La La Land",
-      overview:
-        "A jazz musician and an aspiring actress fall in love while chasing big dreams.",
-      posterPath: "/uDO8zWDhfWwoFdKS4fzkUJt0Rf0.jpg",
-      releaseDate: "2016-11-29",
-      rating: 7.9,
-      tmdbUrl: "https://www.themoviedb.org/movie/313369"
-    },
-    {
-      id: "fb-romance-2",
-      title: "The Notebook",
-      overview:
-        "A timeless love story told through memory, distance, and devotion.",
-      posterPath: "/rNzQyW4f8B8cQeg7Dgj3n6eT5k9.jpg",
-      releaseDate: "2004-06-25",
-      rating: 7.9,
-      tmdbUrl: "https://www.themoviedb.org/movie/11036"
-    }
-  ],
-  horror: [
-    {
-      id: "fb-horror-1",
-      title: "A Quiet Place",
-      overview:
-        "A family must live in silence while hiding from deadly creatures that hunt by sound.",
-      posterPath: "/nAU74GmpUk7t5iklEp3bufwDq4n.jpg",
-      releaseDate: "2018-04-03",
-      rating: 7.4,
-      tmdbUrl: "https://www.themoviedb.org/movie/447332"
-    },
-    {
-      id: "fb-horror-2",
-      title: "The Conjuring",
-      overview:
-        "Paranormal investigators help a family terrorized by a dark presence.",
-      posterPath: "/wVYREutTvI2tmxr6ujrHT704wGF.jpg",
-      releaseDate: "2013-07-18",
-      rating: 7.5,
-      tmdbUrl: "https://www.themoviedb.org/movie/138843"
-    }
-  ],
-  scienceFiction: [
-    {
-      id: "fb-sf-1",
-      title: "Interstellar",
-      overview:
-        "A team of explorers travel through a wormhole in space in an attempt to save humanity.",
-      posterPath: "/gEU2QniE6E77NI6lCU6MxlNBvIx.jpg",
-      releaseDate: "2014-11-05",
-      rating: 8.4,
-      tmdbUrl: "https://www.themoviedb.org/movie/157336"
-    },
-    {
-      id: "fb-sf-2",
-      title: "The Martian",
-      overview:
-        "An astronaut becomes stranded on Mars and must survive using science and grit.",
-      posterPath: "/5aGhaIHYuQbqlHWvWYqMCnj40y2.jpg",
-      releaseDate: "2015-09-30",
-      rating: 7.7,
-      tmdbUrl: "https://www.themoviedb.org/movie/286217"
-    }
-  ],
-  default: [
-    {
-      id: "fb-default-1",
-      title: "Inception",
-      overview:
-        "A skilled thief enters dreams to steal secrets but receives one impossible mission.",
-      posterPath: "/oYuLEt3zVCKq57qu2F8dT7NIa6f.jpg",
-      releaseDate: "2010-07-15",
-      rating: 8.4,
-      tmdbUrl: "https://www.themoviedb.org/movie/27205"
-    },
-    {
-      id: "fb-default-2",
-      title: "Spider-Man: Into the Spider-Verse",
-      overview:
-        "Miles Morales becomes Spider-Man and joins heroes from parallel dimensions.",
-      posterPath: "/iiZZdoQBEYBv6id8su7ImL0oCbD.jpg",
-      releaseDate: "2018-12-06",
-      rating: 8.4,
-      tmdbUrl: "https://www.themoviedb.org/movie/324857"
-    }
-  ]
-};
-
-const OPTION_LOOKUP = new Map<string, Question["options"][number]>();
+const GENRE_ID_TO_KEY = Object.fromEntries(
+  Object.entries(GENRES).map(([genreKey, genreValue]) => [genreValue.id, genreKey])
+);
 
 for (const question of QUESTIONS) {
   for (const option of question.options) {
@@ -336,7 +22,7 @@ for (const question of QUESTIONS) {
   }
 }
 
-function getCorsHeaders(origin: string | null) {
+function getCorsHeaders(origin) {
   const configuredOrigins = Deno.env.get("CORS_ORIGIN") || "*";
 
   if (configuredOrigins === "*") {
@@ -362,7 +48,7 @@ function getCorsHeaders(origin: string | null) {
   };
 }
 
-function jsonResponse(data: unknown, status = 200, corsHeaders: Record<string, string>) {
+function jsonResponse(data, status = 200, corsHeaders) {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
@@ -384,56 +70,202 @@ function getPublicQuestions() {
 }
 
 function createInitialScores() {
-  return Object.keys(GENRES).reduce<Record<string, number>>((acc, key) => {
+  return Object.keys(GENRES).reduce((acc, key) => {
     acc[key] = 0;
     return acc;
   }, {});
 }
 
-function scoreAnswers(answers: Record<string, string>) {
+function parseAnswers(answers) {
   const scores = createInitialScores();
+  const tagCounts = {};
+
+  let languagePreference = "any";
+  let runtimePreference = null;
+  let eraPreference = null;
 
   for (const [questionId, optionId] of Object.entries(answers || {})) {
     const option = OPTION_LOOKUP.get(`${questionId}:${optionId}`);
-    if (!option) {
+    if (!option || !option.weights) {
       continue;
     }
 
     for (const [genreKey, weight] of Object.entries(option.weights)) {
       scores[genreKey] = (scores[genreKey] || 0) + Number(weight || 0);
     }
+
+    for (const tag of option.tags || []) {
+      tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+    }
+
+    if (option.language) {
+      languagePreference = option.language;
+    }
+
+    if (option.runtime) {
+      runtimePreference = option.runtime;
+    }
+
+    if (option.era) {
+      eraPreference = option.era;
+    }
   }
 
-  return scores;
+  return {
+    scores,
+    tagCounts,
+    languagePreference,
+    runtimePreference,
+    eraPreference
+  };
 }
 
-function selectTopGenres(scores: Record<string, number>) {
+function selectTopGenres(scores) {
   const ranked = Object.entries(scores).sort((a, b) => b[1] - a[1]);
 
   if (!ranked.length || ranked[0][1] <= 0) {
     return ["comedy", "drama"];
   }
 
-  return [ranked[0][0], ranked[1] ? ranked[1][0] : null] as [string, string | null];
+  const primaryKey = ranked[0][0];
+  const secondaryKey = ranked[1] ? ranked[1][0] : null;
+
+  return [primaryKey, secondaryKey];
 }
 
-function mapTmdbMovie(movie: Record<string, unknown>) {
+function getTopPreferenceTags(tagCounts) {
+  return Object.entries(tagCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([tag]) => tag);
+}
+
+function scoreMovie(movie, context) {
+  const movieGenres = Array.isArray(movie.genres) ? movie.genres : [];
+  const movieTags = Array.isArray(movie.tags) ? movie.tags : [];
+
+  let score = 0;
+
+  if (movieGenres.includes(context.primaryKey)) {
+    score += 8;
+  }
+
+  if (context.secondaryKey && movieGenres.includes(context.secondaryKey)) {
+    score += 4;
+  }
+
+  for (const tag of context.preferredTags) {
+    if (movieTags.includes(tag)) {
+      score += 3;
+    }
+  }
+
+  if (
+    context.languagePreference !== "any" &&
+    movie.language === context.languagePreference
+  ) {
+    score += 2.5;
+  }
+
+  if (context.runtimePreference && movie.runtime === context.runtimePreference) {
+    score += 1.2;
+  }
+
+  if (context.eraPreference && movie.era === context.eraPreference) {
+    score += 1;
+  }
+
+  score += Number(movie.rating || 0) / 20;
+
+  return score;
+}
+
+function rankMovies(movies, context) {
+  const ranked = movies
+    .map((movie) => ({
+      ...movie,
+      __score: scoreMovie(movie, context)
+    }))
+    .sort((a, b) => b.__score - a.__score || (b.rating || 0) - (a.rating || 0));
+
+  const uniqueMovies = [];
+  const seenIds = new Set();
+
+  for (const movie of ranked) {
+    if (seenIds.has(movie.id)) {
+      continue;
+    }
+
+    seenIds.add(movie.id);
+    const { __score, ...moviePayload } = movie;
+    uniqueMovies.push(moviePayload);
+
+    if (uniqueMovies.length >= RESULT_LIMIT) {
+      break;
+    }
+  }
+
+  return uniqueMovies;
+}
+
+function buildReason({
+  primaryGenre,
+  secondaryGenre,
+  languagePreference,
+  preferredTags
+}) {
+  const reasonParts = [`you strongly matched ${primaryGenre.label}`];
+
+  if (secondaryGenre) {
+    reasonParts.push(`you also aligned with ${secondaryGenre.label.toLowerCase()}`);
+  }
+
+  if (languagePreference && languagePreference !== "any") {
+    reasonParts.push(
+      `you preferred ${LANGUAGE_LABELS[languagePreference] || languagePreference}`
+    );
+  }
+
+  if (preferredTags.length) {
+    const labels = preferredTags
+      .map((tag) => PREFERENCE_TAG_LABELS[tag] || tag)
+      .join(", ");
+    reasonParts.push(`your interests included ${labels}`);
+  }
+
+  return `Recommended because ${reasonParts.join("; ")}.`;
+}
+
+function mapTmdbMovie(movie) {
+  const mappedGenres = Array.isArray(movie.genre_ids)
+    ? movie.genre_ids
+        .map((genreId) => GENRE_ID_TO_KEY[genreId])
+        .filter(Boolean)
+    : [];
+
   return {
-    id: movie.id as number,
-    title: (movie.title as string) || "Unknown",
-    overview: (movie.overview as string) || "",
-    posterPath: (movie.poster_path as string) || "",
-    releaseDate: (movie.release_date as string) || "",
-    rating: Number(movie.vote_average || 0),
-    tmdbUrl: `https://www.themoviedb.org/movie/${movie.id}`
-  } satisfies Movie;
+    id: movie.id,
+    title: movie.title,
+    overview: movie.overview,
+    posterPath: movie.poster_path,
+    releaseDate: movie.release_date,
+    rating: movie.vote_average,
+    tmdbUrl: `https://www.themoviedb.org/movie/${movie.id}`,
+    genres: mappedGenres,
+    tags: [],
+    language: movie.original_language || "unknown"
+  };
 }
 
-async function fetchMoviesFromTmdb(primaryGenreId: number, secondaryGenreId: number | null) {
+async function fetchMoviesFromTmdb({
+  primaryGenreId,
+  secondaryGenreId,
+  languagePreference
+}) {
   const apiKey = Deno.env.get("TMDB_API_KEY");
 
   if (!apiKey) {
-    return { source: "fallback", movies: [] as Movie[] };
+    return { source: "fallback", movies: [] };
   }
 
   const params = new URLSearchParams({
@@ -447,7 +279,12 @@ async function fetchMoviesFromTmdb(primaryGenreId: number, secondaryGenreId: num
     with_genres: [primaryGenreId, secondaryGenreId].filter(Boolean).join(",")
   });
 
-  const response = await fetch(`https://api.themoviedb.org/3/discover/movie?${params.toString()}`,
+  if (languagePreference && languagePreference !== "any") {
+    params.set("with_original_language", languagePreference);
+  }
+
+  const response = await fetch(
+    `https://api.themoviedb.org/3/discover/movie?${params.toString()}`,
     {
       headers: {
         Accept: "application/json"
@@ -461,7 +298,7 @@ async function fetchMoviesFromTmdb(primaryGenreId: number, secondaryGenreId: num
 
   const data = await response.json();
   const movies = Array.isArray(data.results)
-    ? data.results.slice(0, 8).map(mapTmdbMovie)
+    ? data.results.slice(0, 18).map(mapTmdbMovie)
     : [];
 
   return {
@@ -470,32 +307,48 @@ async function fetchMoviesFromTmdb(primaryGenreId: number, secondaryGenreId: num
   };
 }
 
-async function recommendFromAnswers(answers: Record<string, string>) {
-  const scores = scoreAnswers(answers || {});
+async function recommendFromAnswers(answers) {
+  const {
+    scores,
+    tagCounts,
+    languagePreference,
+    runtimePreference,
+    eraPreference
+  } = parseAnswers(answers);
+
   const [primaryKey, secondaryKey] = selectTopGenres(scores);
+  const preferredTags = getTopPreferenceTags(tagCounts);
 
   const primaryGenre = GENRES[primaryKey];
   const secondaryGenre = secondaryKey ? GENRES[secondaryKey] : null;
 
+  const rankContext = {
+    primaryKey,
+    secondaryKey,
+    preferredTags,
+    languagePreference,
+    runtimePreference,
+    eraPreference
+  };
+
+  let movies = [];
   let source = "fallback";
-  let movies: Movie[] = [];
 
   try {
-    const tmdbResponse = await fetchMoviesFromTmdb(
-      primaryGenre.id,
-      secondaryGenre ? secondaryGenre.id : null
-    );
+    const tmdbResponse = await fetchMoviesFromTmdb({
+      primaryGenreId: primaryGenre.id,
+      secondaryGenreId: secondaryGenre ? secondaryGenre.id : null,
+      languagePreference
+    });
+
     source = tmdbResponse.source;
-    movies = tmdbResponse.movies;
+    movies = rankMovies(tmdbResponse.movies, rankContext);
   } catch {
     source = "fallback";
   }
 
   if (!movies.length) {
-    movies =
-      FALLBACK_MOVIES_BY_GENRE[primaryKey] ||
-      FALLBACK_MOVIES_BY_GENRE.default ||
-      [];
+    movies = rankMovies(FALLBACK_MOVIES, rankContext);
     source = "fallback";
   }
 
@@ -503,11 +356,23 @@ async function recommendFromAnswers(answers: Record<string, string>) {
     movieType: primaryGenre.label,
     backupType: secondaryGenre ? secondaryGenre.label : null,
     source,
-    movies: movies.slice(0, 8)
+    recommendationReason: buildReason({
+      primaryGenre,
+      secondaryGenre,
+      languagePreference,
+      preferredTags
+    }),
+    appliedPreferences: {
+      language: LANGUAGE_LABELS[languagePreference] || LANGUAGE_LABELS.any,
+      tags: preferredTags.map((tag) => PREFERENCE_TAG_LABELS[tag] || tag),
+      runtime: runtimePreference || "Any",
+      era: eraPreference || "Any"
+    },
+    movies
   };
 }
 
-function resolveRoute(requestUrl: URL) {
+function resolveRoute(requestUrl) {
   const routeFromQuery = requestUrl.searchParams.get("route");
   if (routeFromQuery) {
     return routeFromQuery;
@@ -517,7 +382,7 @@ function resolveRoute(requestUrl: URL) {
   return parts[parts.length - 1] || "questions";
 }
 
-serve(async (req: Request) => {
+serve(async (req) => {
   const origin = req.headers.get("origin");
   const corsHeaders = getCorsHeaders(origin);
 
@@ -549,7 +414,7 @@ serve(async (req: Request) => {
         );
       }
 
-      const recommendation = await recommendFromAnswers(answers as Record<string, string>);
+      const recommendation = await recommendFromAnswers(answers);
       return jsonResponse(recommendation, 200, corsHeaders);
     } catch {
       return jsonResponse({ error: "Invalid JSON payload" }, 400, corsHeaders);

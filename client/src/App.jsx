@@ -228,6 +228,19 @@ export default function App() {
               <p className="source-note">
                 Source: {result.source === "tmdb" ? "TMDB API" : "Offline fallback list"}
               </p>
+              {result.recommendationReason ? (
+                <p className="reason-note">{result.recommendationReason}</p>
+              ) : null}
+              {result.appliedPreferences ? (
+                <div className="preference-pills">
+                  <span>{result.appliedPreferences.language}</span>
+                  <span>{result.appliedPreferences.runtime} runtime</span>
+                  <span>{result.appliedPreferences.era} era</span>
+                  {(result.appliedPreferences.tags || []).map((tag) => (
+                    <span key={tag}>{tag}</span>
+                  ))}
+                </div>
+              ) : null}
             </div>
 
             <div className="movie-grid">

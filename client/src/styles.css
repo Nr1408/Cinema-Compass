@@ -217,6 +217,29 @@ button:disabled {
   font-size: 0.92rem;
 }
 
+.reason-note {
+  margin-top: 0.45rem !important;
+  color: #fff5e4 !important;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.preference-pills {
+  margin-top: 0.7rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.preference-pills span {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  padding: 0.25rem 0.62rem;
+  font-size: 0.78rem;
+  color: #ebf8f7;
+}
+
 .movie-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));

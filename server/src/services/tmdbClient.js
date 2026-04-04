@@ -1,6 +1,18 @@
+import { GENRES } from "../data/questions.js";
+
 const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 
+const GENRE_ID_TO_KEY = Object.fromEntries(
+  Object.entries(GENRES).map(([genreKey, genreValue]) => [genreValue.id, genreKey])
+);
+
 function mapTmdbMovie(movie) {
+  const mappedGenres = Array.isArray(movie.genre_ids)
+    ? movie.genre_ids
+        .map((genreId) => GENRE_ID_TO_KEY[genreId])
+        .filter(Boolean)
+    : [];
+
   return {
     id: movie.id,
     title: movie.title,
@@ -8,11 +20,18 @@ function mapTmdbMovie(movie) {
     posterPath: movie.poster_path,
     releaseDate: movie.release_date,
     rating: movie.vote_average,
-    tmdbUrl: `https://www.themoviedb.org/movie/${movie.id}`
+    tmdbUrl: `https://www.themoviedb.org/movie/${movie.id}`,
+    genres: mappedGenres,
+    tags: [],
+    language: movie.original_language || "unknown"
   };
 }
 
-export async function fetchMoviesFromTmdb({ primaryGenreId, secondaryGenreId }) {
+export async function fetchMoviesFromTmdb({
+  primaryGenreId,
+  secondaryGenreId,
+  languagePreference
+}) {
   const apiKey = process.env.TMDB_API_KEY;
 
   if (!apiKey) {
@@ -30,6 +49,10 @@ export async function fetchMoviesFromTmdb({ primaryGenreId, secondaryGenreId }) 
     with_genres: [primaryGenreId, secondaryGenreId].filter(Boolean).join(",")
   });
 
+  if (languagePreference && languagePreference !== "any") {
+    params.set("with_original_language", languagePreference);
+  }
+
   const url = `${TMDB_BASE_URL}/discover/movie?${params.toString()}`;
   const response = await fetch(url, {
     headers: {
@@ -43,7 +66,7 @@ export async function fetchMoviesFromTmdb({ primaryGenreId, secondaryGenreId }) 
 
   const data = await response.json();
   const movies = Array.isArray(data.results)
-    ? data.results.slice(0, 8).map(mapTmdbMovie)
+    ? data.results.slice(0, 18).map(mapTmdbMovie)
     : [];
 
   return {
