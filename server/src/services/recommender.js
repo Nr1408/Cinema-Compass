@@ -52,7 +52,8 @@ export async function recommendFromAnswers(answers) {
       primaryGenreId: primaryGenre.id,
       secondaryGenreId: secondaryGenre ? secondaryGenre.id : null,
       languagePreference: rankContext.languagePreference,
-      focusTags: rankContext.focusTags
+      focusTags: rankContext.focusTags,
+      eraPreference: rankContext.eraPreference
     });
 
     source = tmdbResponse.source;

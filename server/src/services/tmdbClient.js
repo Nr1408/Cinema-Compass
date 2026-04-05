@@ -7,6 +7,27 @@ const GENRE_ID_TO_KEY = Object.fromEntries(
   Object.entries(GENRES).map(([genreKey, genreValue]) => [genreValue.id, genreKey])
 );
 
+const ERA_FILTERS = {
+  latest: {
+    minDate: "2020-01-01",
+    maxDate: null,
+    strictVoteThreshold: "100",
+    broadVoteThreshold: "70"
+  },
+  modern: {
+    minDate: "2005-01-01",
+    maxDate: "2019-12-31",
+    strictVoteThreshold: "70",
+    broadVoteThreshold: "45"
+  },
+  classic: {
+    minDate: null,
+    maxDate: "2004-12-31",
+    strictVoteThreshold: "20",
+    broadVoteThreshold: "10"
+  }
+};
+
 function inferEraFromDate(releaseDate) {
   const year = Number(String(releaseDate || "").slice(0, 4));
 
@@ -23,6 +44,27 @@ function inferEraFromDate(releaseDate) {
   }
 
   return "classic";
+}
+
+function applyEraFilters(params, eraPreference, queryScope) {
+  const config = ERA_FILTERS[eraPreference];
+
+  if (!config) {
+    return;
+  }
+
+  if (config.minDate) {
+    params.set("primary_release_date.gte", config.minDate);
+  }
+
+  if (config.maxDate) {
+    params.set("primary_release_date.lte", config.maxDate);
+  }
+
+  params.set(
+    "vote_count_gte",
+    queryScope === "strict" ? config.strictVoteThreshold : config.broadVoteThreshold
+  );
 }
 
 function pickFocusQueries(focusTags = []) {
@@ -115,7 +157,8 @@ export async function fetchMoviesFromTmdb({
   primaryGenreId,
   secondaryGenreId,
   languagePreference,
-  focusTags
+  focusTags,
+  eraPreference
 }) {
   const apiKey = process.env.TMDB_API_KEY;
 
@@ -150,6 +193,9 @@ export async function fetchMoviesFromTmdb({
     strictParams.set("with_original_language", languagePreference);
     broadParams.set("with_original_language", languagePreference);
   }
+
+  applyEraFilters(strictParams, eraPreference, "strict");
+  applyEraFilters(broadParams, eraPreference, "broad");
 
   const discoverUrls = [
     ...buildPagedUrls(`${TMDB_BASE_URL}/discover/movie`, strictParams, 1, 3)

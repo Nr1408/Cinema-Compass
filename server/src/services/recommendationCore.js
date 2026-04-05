@@ -5,7 +5,7 @@ import {
   QUESTIONS
 } from "../data/questions.js";
 
-export const RESULT_LIMIT = 8;
+export const RESULT_LIMIT = 10;
 
 const MODEL_WEIGHTS = {
   genreAlignmentBase: 24,

@@ -158,6 +158,18 @@ export const QUESTIONS = [
         tags: ["inspiring", "trueStory"]
       },
       {
+        id: "feelgood",
+        text: "Feel-good comedy and light fun",
+        weights: { comedy: 3, family: 2, romance: 1 },
+        tags: ["feelgood", "family"]
+      },
+      {
+        id: "scifi",
+        text: "Sci-fi and futuristic adventure",
+        weights: { scienceFiction: 3, adventure: 2, action: 1 },
+        tags: ["mindgame"]
+      },
+      {
         id: "horror",
         text: "Horror and intense thrill",
         weights: { horror: 3, thriller: 2, mystery: 1 },
