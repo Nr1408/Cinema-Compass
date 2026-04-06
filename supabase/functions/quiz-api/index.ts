@@ -4,6 +4,7 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { FALLBACK_MOVIES } from "../../../server/src/data/fallbackMovies.js";
 import { GENRES, QUESTIONS } from "../../../server/src/data/questions.js";
 import {
+  buildMovieIdentityKey,
   buildConstraintNotice,
   buildRankContext,
   buildReason,
@@ -160,7 +161,7 @@ function mergeMoviePools(primaryMovies, secondaryMovies) {
   const seen = new Set();
 
   for (const movie of [...primaryMovies, ...secondaryMovies]) {
-    const key = `${movie.mediaType || "movie"}:${movie.id}:${movie.title}`;
+    const key = buildMovieIdentityKey(movie);
     if (seen.has(key)) {
       continue;
     }
