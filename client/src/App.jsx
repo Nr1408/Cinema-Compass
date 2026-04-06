@@ -17,6 +17,25 @@ const RECOMMEND_API_URL =
 const HISTORY_STORAGE_KEY = "cinema-compass-history-v1";
 const HISTORY_LIMIT = 8;
 
+const MEDIA_LABEL_BY_ANSWER = {
+  movie: "Movies only",
+  series: "Series only",
+  any: "Movies and series"
+};
+
+function resolveMediaLabel(appliedMedia, selectedMediaAnswerId) {
+  const trimmedApplied = typeof appliedMedia === "string" ? appliedMedia.trim() : "";
+  if (trimmedApplied) {
+    return trimmedApplied;
+  }
+
+  if (selectedMediaAnswerId && MEDIA_LABEL_BY_ANSWER[selectedMediaAnswerId]) {
+    return MEDIA_LABEL_BY_ANSWER[selectedMediaAnswerId];
+  }
+
+  return "No format preference";
+}
+
 function formatDate(value) {
   if (!value) {
     return "Unknown date";
@@ -52,6 +71,11 @@ export default function App() {
   const currentQuestion = questions[currentIndex] || null;
   const totalQuestions = questions.length;
   const selectedOption = currentQuestion ? answers[currentQuestion.id] : null;
+
+  const mediaPreferenceLabel = useMemo(
+    () => resolveMediaLabel(result?.appliedPreferences?.media, answers.media),
+    [result, answers.media]
+  );
 
   const progress = useMemo(() => {
     if (!totalQuestions) {
@@ -180,7 +204,7 @@ export default function App() {
         id: `${Date.now()}`,
         time: new Date().toISOString(),
         movieType: data.movieType,
-        media: data.appliedPreferences?.media || "Movies only",
+        media: resolveMediaLabel(data.appliedPreferences?.media, answers.media),
         topMovie: data.movies?.[0]?.title || "No movie available",
         source: data.source
       };
@@ -333,7 +357,7 @@ export default function App() {
               ) : null}
               {result.appliedPreferences ? (
                 <div className="preference-pills">
-                  <span>{result.appliedPreferences.media}</span>
+                  <span>{mediaPreferenceLabel}</span>
                   <span>{result.appliedPreferences.language}</span>
                   <span>{result.appliedPreferences.runtime} runtime</span>
                   <span>{result.appliedPreferences.era} era</span>
