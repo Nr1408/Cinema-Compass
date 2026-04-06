@@ -5,6 +5,7 @@ import {
 } from "../data/questions.js";
 import { fetchMoviesFromTmdb } from "./tmdbClient.js";
 import {
+  buildMovieIdentityKey,
   buildConstraintNotice,
   buildRankContext,
   buildReason,
@@ -22,7 +23,7 @@ function mergeMoviePools(primaryMovies, secondaryMovies) {
   const seen = new Set();
 
   for (const movie of [...primaryMovies, ...secondaryMovies]) {
-    const key = `${movie.mediaType || "movie"}:${movie.id}:${movie.title}`;
+    const key = buildMovieIdentityKey(movie);
     if (seen.has(key)) {
       continue;
     }

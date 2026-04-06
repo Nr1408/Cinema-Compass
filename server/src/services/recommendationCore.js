@@ -347,8 +347,47 @@ function isMediaPreferenceMatch(movie, context) {
   return getMovieMediaType(movie) === context.mediaPreference;
 }
 
-function buildMovieIdentityKey(movie) {
-  return `${getMovieMediaType(movie)}:${String(movie.id)}:${movie.title || ""}`;
+function extractTmdbIdentity(movie) {
+  const tmdbUrl = typeof movie?.tmdbUrl === "string" ? movie.tmdbUrl : "";
+  const tmdbMatch = tmdbUrl.match(/\/(movie|tv)\/(\d+)/i);
+
+  if (tmdbMatch) {
+    const mediaType = tmdbMatch[1].toLowerCase() === "tv" ? "series" : "movie";
+    return `${mediaType}:${tmdbMatch[2]}`;
+  }
+
+  const rawId = movie?.id;
+  const normalizedId = String(rawId || "");
+  if (/^\d+$/.test(normalizedId)) {
+    return `${getMovieMediaType(movie)}:${normalizedId}`;
+  }
+
+  return null;
+}
+
+function normalizeTitle(value = "") {
+  return String(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+export function buildMovieIdentityKey(movie) {
+  const tmdbIdentity = extractTmdbIdentity(movie);
+  if (tmdbIdentity) {
+    return `tmdb:${tmdbIdentity}`;
+  }
+
+  const mediaType = getMovieMediaType(movie);
+  const normalizedTitle = normalizeTitle(movie?.title || "");
+  const yearCandidate = String(movie?.releaseDate || "").slice(0, 4);
+  const normalizedYear = /^\d{4}$/.test(yearCandidate) ? yearCandidate : "na";
+
+  if (normalizedTitle) {
+    return `${mediaType}:title:${normalizedTitle}:${normalizedYear}`;
+  }
+
+  return `${mediaType}:id:${String(movie?.id || "")}`;
 }
 
 function computeConstraintFit(movie, context) {
