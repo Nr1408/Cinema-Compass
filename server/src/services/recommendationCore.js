@@ -1,6 +1,7 @@
 import {
   GENRES,
   LANGUAGE_LABELS,
+  MEDIA_PREFERENCE_LABELS,
   PREFERENCE_TAG_LABELS,
   QUESTIONS
 } from "../data/questions.js";
@@ -36,11 +37,13 @@ const MODEL_WEIGHTS = {
 };
 
 const FOCUS_PRIORITY_SLOTS = 3;
+const LANGUAGE_PRIORITY_SLOTS = 2;
 const SOFT_LANGUAGE_MIN_FOCUS_MATCHES = 2;
 
 const QUESTION_IMPORTANCE = {
   focus: 4.2,
   language: 3,
+  media: 1,
   world: 1.6,
   pace: 1.5,
   length: 1.4,
@@ -98,6 +101,7 @@ export function parseAnswers(answers) {
   let answeredCount = 0;
 
   let languagePreference = "any";
+  let mediaPreference = "movie";
   let runtimePreference = null;
   let eraPreference = null;
   let focusLabel = null;
@@ -105,15 +109,16 @@ export function parseAnswers(answers) {
 
   for (const [questionId, optionId] of Object.entries(answers || {})) {
     const option = OPTION_LOOKUP.get(`${questionId}:${optionId}`);
-    if (!option || !option.weights) {
+    if (!option) {
       continue;
     }
 
     answeredCount += 1;
 
     const questionWeight = QUESTION_IMPORTANCE[questionId] || 1;
+    const optionWeights = option.weights || {};
 
-    for (const [genreKey, weight] of Object.entries(option.weights)) {
+    for (const [genreKey, weight] of Object.entries(optionWeights)) {
       genreScores[genreKey] =
         (genreScores[genreKey] || 0) + Number(weight || 0) * questionWeight;
     }
@@ -131,6 +136,10 @@ export function parseAnswers(answers) {
       languagePreference = option.language;
     }
 
+    if (option.mediaPreference) {
+      mediaPreference = option.mediaPreference;
+    }
+
     if (option.runtime) {
       runtimePreference = option.runtime;
     }
@@ -146,6 +155,7 @@ export function parseAnswers(answers) {
     tagScores,
     answeredCount,
     languagePreference,
+    mediaPreference,
     runtimePreference,
     eraPreference,
     focusLabel,
@@ -259,9 +269,72 @@ function isFocusMatch(movie, context) {
   return context.focusTags.some((tag) => movieTags.includes(tag));
 }
 
+function isEraMatch(movie, context) {
+  if (!context.eraPreference) {
+    return true;
+  }
+
+  return Boolean(movie.era && movie.era === context.eraPreference);
+}
+
+function isExactOptionMatch(movie, context) {
+  if (!isMediaPreferenceMatch(movie, context)) {
+    return false;
+  }
+
+  if (!isLanguageMatch(movie, context)) {
+    return false;
+  }
+
+  if (!isEraMatch(movie, context)) {
+    return false;
+  }
+
+  if (!isFocusMatch(movie, context)) {
+    return false;
+  }
+
+  return true;
+}
+
+function getMediaNoun(mediaPreference) {
+  if (mediaPreference === "series") {
+    return "series";
+  }
+
+  if (mediaPreference === "movie") {
+    return "movies";
+  }
+
+  return "titles";
+}
+
+function getMovieMediaType(movie) {
+  return movie.mediaType === "series" ? "series" : "movie";
+}
+
+function isMediaPreferenceMatch(movie, context) {
+  if (!context.mediaPreference || context.mediaPreference === "any") {
+    return true;
+  }
+
+  return getMovieMediaType(movie) === context.mediaPreference;
+}
+
+function buildMovieIdentityKey(movie) {
+  return `${getMovieMediaType(movie)}:${String(movie.id)}:${movie.title || ""}`;
+}
+
 function computeConstraintFit(movie, context) {
   let slots = 0;
   let matched = 0;
+
+  if (context.mediaPreference && context.mediaPreference !== "any") {
+    slots += 1;
+    if (isMediaPreferenceMatch(movie, context)) {
+      matched += 1;
+    }
+  }
 
   if (context.languagePreference && context.languagePreference !== "any") {
     slots += 1;
@@ -447,7 +520,13 @@ export function scoreMovie(movie, context) {
 
 export function rankMoviesDetailed(movies, context, limit = RESULT_LIMIT) {
   const rankingSignals = {
+    mediaRelaxed: false,
     languageRelaxed: false,
+    languageSupplyLow: false,
+    languagePriorityEnforced: false,
+    exactMatchCount: 0,
+    noExactOptionMatch: false,
+    exactOptionMatchLimited: false,
     eraRelaxed: false,
     focusSupplyLow: false,
     focusPriorityEnforced: false,
@@ -455,7 +534,29 @@ export function rankMoviesDetailed(movies, context, limit = RESULT_LIMIT) {
     topLanguageMatches: null
   };
 
-  const baseMovies = Array.isArray(movies) ? movies : [];
+  const sourceMovies = Array.isArray(movies) ? movies : [];
+  let baseMovies = sourceMovies;
+
+  if (context.mediaPreference && context.mediaPreference !== "any") {
+    const mediaMatchedMovies = sourceMovies.filter((movie) =>
+      isMediaPreferenceMatch(movie, context)
+    );
+
+    if (mediaMatchedMovies.length) {
+      baseMovies = mediaMatchedMovies;
+    } else {
+      rankingSignals.mediaRelaxed = true;
+    }
+  }
+
+  const exactOptionMatches = sourceMovies.filter((movie) =>
+    isExactOptionMatch(movie, context)
+  );
+  rankingSignals.exactMatchCount = exactOptionMatches.length;
+  rankingSignals.noExactOptionMatch = exactOptionMatches.length === 0;
+  rankingSignals.exactOptionMatchLimited =
+    exactOptionMatches.length > 0 && exactOptionMatches.length < limit;
+
   const reservoirSize = Math.max(limit * 3, 24);
   let candidateMovies = baseMovies;
   const minConstraintFit =
@@ -538,11 +639,12 @@ export function rankMoviesDetailed(movies, context, limit = RESULT_LIMIT) {
   const seenIds = new Set();
 
   for (const movie of ranked) {
-    if (seenIds.has(movie.id)) {
+    const key = buildMovieIdentityKey(movie);
+    if (seenIds.has(key)) {
       continue;
     }
 
-    seenIds.add(movie.id);
+    seenIds.add(key);
     const { __score, __constraintFit, ...moviePayload } = movie;
     uniqueMovies.push(moviePayload);
 
@@ -552,15 +654,16 @@ export function rankMoviesDetailed(movies, context, limit = RESULT_LIMIT) {
   }
 
   if (uniqueMovies.length < limit && candidateMovies !== baseMovies) {
-    const alreadyIncluded = new Set(uniqueMovies.map((movie) => movie.id));
+    const alreadyIncluded = new Set(uniqueMovies.map((movie) => buildMovieIdentityKey(movie)));
     const fallbackRanked = scoreAndSort(baseMovies);
 
     for (const movie of fallbackRanked) {
-      if (alreadyIncluded.has(movie.id)) {
+      const key = buildMovieIdentityKey(movie);
+      if (alreadyIncluded.has(key)) {
         continue;
       }
 
-      alreadyIncluded.add(movie.id);
+      alreadyIncluded.add(key);
       const { __score, __constraintFit, ...moviePayload } = movie;
       uniqueMovies.push(moviePayload);
 
@@ -576,7 +679,7 @@ export function rankMoviesDetailed(movies, context, limit = RESULT_LIMIT) {
 
     if (focusRankedMovies.length < requiredFocusSlots) {
       const existingFocusKeys = new Set(
-        focusRankedMovies.map((movie) => `${movie.id}:${movie.title}`)
+        focusRankedMovies.map((movie) => buildMovieIdentityKey(movie))
       );
 
       const additionalFocusMovies = scoreAndSort(baseMovies)
@@ -584,7 +687,7 @@ export function rankMoviesDetailed(movies, context, limit = RESULT_LIMIT) {
         .map(({ __score, __constraintFit, ...moviePayload }) => moviePayload);
 
       for (const movie of additionalFocusMovies) {
-        const key = `${movie.id}:${movie.title}`;
+        const key = buildMovieIdentityKey(movie);
         if (existingFocusKeys.has(key)) {
           continue;
         }
@@ -621,6 +724,79 @@ export function rankMoviesDetailed(movies, context, limit = RESULT_LIMIT) {
     }
   }
 
+  if (context.languagePreference && context.languagePreference !== "any" && uniqueMovies.length) {
+    const requiredLanguageSlots = Math.min(
+      context.focusTags.length ? 1 : LANGUAGE_PRIORITY_SLOTS,
+      limit
+    );
+    const isLanguagePriorityEligible = (movie) => {
+      if (!isLanguageMatch(movie, context)) {
+        return false;
+      }
+
+      // When focus is selected, do not force language picks that break focus intent.
+      if (context.focusTags.length && !isFocusMatch(movie, context)) {
+        return false;
+      }
+
+      return true;
+    };
+
+    const languageRankedMovies = uniqueMovies.filter((movie) =>
+      isLanguagePriorityEligible(movie)
+    );
+
+    if (languageRankedMovies.length < requiredLanguageSlots) {
+      const existingLanguageKeys = new Set(
+        languageRankedMovies.map((movie) => buildMovieIdentityKey(movie))
+      );
+
+      const languagePriorityPool = context.focusTags.length
+        ? candidateMovies.filter((movie) => isFocusMatch(movie, context))
+        : candidateMovies;
+
+      const additionalLanguageMovies = scoreAndSort(languagePriorityPool)
+        .filter((movie) => isLanguagePriorityEligible(movie))
+        .map(({ __score, __constraintFit, ...moviePayload }) => moviePayload);
+
+      for (const movie of additionalLanguageMovies) {
+        const key = buildMovieIdentityKey(movie);
+        if (existingLanguageKeys.has(key)) {
+          continue;
+        }
+
+        existingLanguageKeys.add(key);
+        languageRankedMovies.push(movie);
+
+        if (languageRankedMovies.length >= requiredLanguageSlots) {
+          break;
+        }
+      }
+    }
+
+    const nonLanguageRankedMovies = uniqueMovies.filter(
+      (movie) => !isLanguageMatch(movie, context)
+    );
+
+    if (languageRankedMovies.length >= requiredLanguageSlots) {
+      uniqueMovies.splice(
+        0,
+        uniqueMovies.length,
+        ...[...languageRankedMovies, ...nonLanguageRankedMovies].slice(0, limit)
+      );
+      rankingSignals.languagePriorityEnforced = true;
+    } else if (languageRankedMovies.length) {
+      uniqueMovies.splice(
+        0,
+        uniqueMovies.length,
+        ...[...languageRankedMovies, ...nonLanguageRankedMovies].slice(0, limit)
+      );
+      rankingSignals.languageSupplyLow = true;
+    } else {
+      rankingSignals.languageSupplyLow = true;
+    }
+  }
+
   const finalMovies = uniqueMovies.slice(0, limit);
   const topSlice = finalMovies.slice(0, Math.min(5, finalMovies.length));
 
@@ -652,6 +828,24 @@ export function buildConstraintNotice(context, rankingSignals) {
 
   const notes = [];
 
+  if (rankingSignals.noExactOptionMatch) {
+    const mediaNoun = getMediaNoun(context.mediaPreference);
+    const languagePrefix =
+      context.languagePreference && context.languagePreference !== "any"
+        ? `${LANGUAGE_LABELS[context.languagePreference] || context.languagePreference} `
+        : "";
+
+    notes.push(
+      `No ${languagePrefix}${mediaNoun} matched all selected options exactly, so closest matches are shown.`
+    );
+  } else if (rankingSignals.exactOptionMatchLimited) {
+    notes.push(
+      `Only ${rankingSignals.exactMatchCount} title${
+        rankingSignals.exactMatchCount > 1 ? "s" : ""
+      } matched all selected options exactly, so nearby matches were added.`
+    );
+  }
+
   if (context.focusTags.length && rankingSignals.focusSupplyLow) {
     notes.push(
       `Limited ${
@@ -660,7 +854,25 @@ export function buildConstraintNotice(context, rankingSignals) {
     );
   }
 
-  if (context.languagePreference !== "any" && rankingSignals.languageRelaxed) {
+  if (context.mediaPreference !== "any" && rankingSignals.mediaRelaxed) {
+    notes.push(
+      "Format preference was softened because matching titles were limited in this pool."
+    );
+  }
+
+  if (context.languagePreference !== "any" && rankingSignals.languageSupplyLow) {
+    notes.push(
+      `Only a few ${
+        LANGUAGE_LABELS[context.languagePreference] || context.languagePreference
+      } titles were available for this focus, so broader language picks were included.`
+    );
+  }
+
+  if (
+    context.languagePreference !== "any" &&
+    rankingSignals.languageRelaxed &&
+    !rankingSignals.languageSupplyLow
+  ) {
     notes.push("Language preference was softened to preserve focus accuracy.");
   }
 
@@ -678,6 +890,7 @@ export function buildConstraintNotice(context, rankingSignals) {
 export function buildReason({
   primaryGenre,
   secondaryGenre,
+  mediaPreference,
   languagePreference,
   preferredTags,
   focusLabel
@@ -690,6 +903,12 @@ export function buildReason({
 
   if (focusLabel) {
     reasonParts.push(`you selected ${focusLabel.toLowerCase()} as your main focus`);
+  }
+
+  if (mediaPreference && mediaPreference !== "any") {
+    reasonParts.push(
+      `you asked for ${MEDIA_PREFERENCE_LABELS[mediaPreference] || mediaPreference}`
+    );
   }
 
   if (languagePreference && languagePreference !== "any") {
@@ -710,6 +929,7 @@ export function buildReason({
 
 export function formatAppliedPreferences(context) {
   return {
+    media: MEDIA_PREFERENCE_LABELS[context.mediaPreference] || MEDIA_PREFERENCE_LABELS.movie,
     language: LANGUAGE_LABELS[context.languagePreference] || LANGUAGE_LABELS.any,
     tags: context.preferredTags.map((tag) => PREFERENCE_TAG_LABELS[tag] || tag),
     runtime: context.runtimePreference || "Any",

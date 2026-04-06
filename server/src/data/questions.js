@@ -23,6 +23,12 @@ export const LANGUAGE_LABELS = {
   es: "Spanish"
 };
 
+export const MEDIA_PREFERENCE_LABELS = {
+  movie: "Movies only",
+  series: "Series only",
+  any: "Movies and series"
+};
+
 export const PREFERENCE_TAG_LABELS = {
   motorsport: "Motorsport",
   sports: "Sports",
@@ -39,6 +45,30 @@ export const PREFERENCE_TAG_LABELS = {
 };
 
 export const QUESTIONS = [
+  {
+    id: "media",
+    title: "What do you want to watch right now?",
+    options: [
+      {
+        id: "movie",
+        text: "Movies",
+        weights: {},
+        mediaPreference: "movie"
+      },
+      {
+        id: "series",
+        text: "Series",
+        weights: {},
+        mediaPreference: "series"
+      },
+      {
+        id: "any",
+        text: "Either movies or series",
+        weights: {},
+        mediaPreference: "any"
+      }
+    ]
+  },
   {
     id: "mood",
     title: "How are you feeling right now?",
@@ -179,7 +209,7 @@ export const QUESTIONS = [
   },
   {
     id: "language",
-    title: "Preferred movie language",
+    title: "Preferred language",
     options: [
       {
         id: "english",

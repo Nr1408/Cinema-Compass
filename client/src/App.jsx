@@ -180,6 +180,7 @@ export default function App() {
         id: `${Date.now()}`,
         time: new Date().toISOString(),
         movieType: data.movieType,
+        media: data.appliedPreferences?.media || "Movies only",
         topMovie: data.movies?.[0]?.title || "No movie available",
         source: data.source
       };
@@ -245,7 +246,7 @@ export default function App() {
       <header className="hero">
         <h1>Cinema Compass</h1>
         <p className="hero-subtitle">
-          Answer a few questions and discover your movie type instantly.
+          Answer a few questions and discover your next watch instantly.
         </p>
       </header>
 
@@ -306,7 +307,7 @@ export default function App() {
                 {currentIndex === totalQuestions - 1
                   ? submitting
                     ? "Getting recommendation..."
-                    : "See my movie type"
+                    : "See my recommendation"
                   : "Next"}
               </button>
             </div>
@@ -316,7 +317,7 @@ export default function App() {
         {!loading && result ? (
           <section className="result-panel">
             <div className="result-banner">
-              <p>Your movie type</p>
+              <p>Your recommendation type</p>
               <h2>{result.movieType}</h2>
               {result.backupType ? (
                 <p className="backup">Backup vibe: {result.backupType}</p>
@@ -332,6 +333,7 @@ export default function App() {
               ) : null}
               {result.appliedPreferences ? (
                 <div className="preference-pills">
+                  <span>{result.appliedPreferences.media}</span>
                   <span>{result.appliedPreferences.language}</span>
                   <span>{result.appliedPreferences.runtime} runtime</span>
                   <span>{result.appliedPreferences.era} era</span>
@@ -434,7 +436,7 @@ export default function App() {
               {historyItems.map((item) => (
                 <article key={item.id} className="history-item">
                   <p>
-                    <strong>{item.movieType}</strong> | {item.topMovie}
+                    <strong>{item.movieType}</strong> | {item.media} | {item.topMovie}
                   </p>
                   <p className="history-meta">
                     {new Date(item.time).toLocaleString()} | Source: {item.source}

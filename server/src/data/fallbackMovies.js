@@ -493,6 +493,242 @@ export const FALLBACK_MOVIES = [
     language: "hi",
     runtime: "long",
     era: "modern"
+  },
+  {
+    id: "fb-hindi-2",
+    title: "Kahaani",
+    overview:
+      "A pregnant woman arrives in Kolkata to search for her missing husband and uncovers a layered conspiracy.",
+    posterPath: null,
+    releaseDate: "2012-03-09",
+    rating: 7.9,
+    tmdbUrl: "https://www.themoviedb.org/movie/86004",
+    genres: ["mystery", "thriller", "crime"],
+    tags: ["detective", "mindgame", "dark"],
+    language: "hi",
+    runtime: "medium",
+    era: "modern"
+  },
+  {
+    id: "fb-hindi-3",
+    title: "Drishyam",
+    overview:
+      "A family man uses clever planning and misdirection to protect his family after a crime.",
+    posterPath: null,
+    releaseDate: "2015-07-31",
+    rating: 8.0,
+    tmdbUrl: "https://www.themoviedb.org/movie/352173",
+    genres: ["crime", "mystery", "thriller"],
+    tags: ["mindgame", "detective", "dark"],
+    language: "hi",
+    runtime: "long",
+    era: "modern"
+  },
+  {
+    id: "fb-hindi-4",
+    title: "Talvar",
+    overview:
+      "A high-profile double murder case exposes conflicting investigations and institutional pressure.",
+    posterPath: null,
+    releaseDate: "2015-10-02",
+    rating: 7.7,
+    tmdbUrl: "https://www.themoviedb.org/movie/353464",
+    genres: ["mystery", "crime", "drama"],
+    tags: ["detective", "trueStory", "dark"],
+    language: "hi",
+    runtime: "medium",
+    era: "modern"
+  },
+  {
+    id: "fb-hindi-5",
+    title: "Bhaag Milkha Bhaag",
+    overview:
+      "The journey of a champion sprinter overcoming trauma to become one of India's greatest athletes.",
+    posterPath: null,
+    releaseDate: "2013-07-12",
+    rating: 7.9,
+    tmdbUrl: "https://www.themoviedb.org/movie/204082",
+    genres: ["drama"],
+    tags: ["sports", "inspiring", "trueStory"],
+    language: "hi",
+    runtime: "long",
+    era: "modern"
+  },
+  {
+    id: "fb-series-1",
+    title: "Formula 1: Drive to Survive",
+    overview:
+      "Inside Formula 1, teams and drivers battle through pressure, rivalries, and split-second decisions.",
+    posterPath: null,
+    releaseDate: "2019-03-08",
+    rating: 8.3,
+    tmdbUrl: "https://www.themoviedb.org/tv/79931",
+    genres: ["drama", "action"],
+    tags: ["motorsport", "cars", "sports", "trueStory"],
+    language: "en",
+    runtime: "medium",
+    era: "modern",
+    mediaType: "series"
+  },
+  {
+    id: "fb-series-2",
+    title: "The Last Dance",
+    overview:
+      "A deep look into Michael Jordan and the Chicago Bulls dynasty during their final championship run.",
+    posterPath: null,
+    releaseDate: "2020-04-19",
+    rating: 8.5,
+    tmdbUrl: "https://www.themoviedb.org/tv/104825",
+    genres: ["drama"],
+    tags: ["sports", "inspiring", "trueStory"],
+    language: "en",
+    runtime: "medium",
+    era: "latest",
+    mediaType: "series"
+  },
+  {
+    id: "fb-series-3",
+    title: "Sherlock",
+    overview:
+      "A brilliant detective and his trusted partner solve impossible crimes in modern London.",
+    posterPath: null,
+    releaseDate: "2010-07-25",
+    rating: 8.5,
+    tmdbUrl: "https://www.themoviedb.org/tv/19885",
+    genres: ["mystery", "crime", "thriller"],
+    tags: ["detective", "mindgame"],
+    language: "en",
+    runtime: "long",
+    era: "modern",
+    mediaType: "series"
+  },
+  {
+    id: "fb-series-4",
+    title: "Dark",
+    overview:
+      "A missing child case uncovers a time-travel mystery that ties together four families.",
+    posterPath: null,
+    releaseDate: "2017-12-01",
+    rating: 8.4,
+    tmdbUrl: "https://www.themoviedb.org/tv/70523",
+    genres: ["scienceFiction", "mystery", "thriller"],
+    tags: ["mindgame", "dark"],
+    language: "de",
+    runtime: "long",
+    era: "modern",
+    mediaType: "series"
+  },
+  {
+    id: "fb-series-5",
+    title: "Stranger Things",
+    overview:
+      "A group of kids confront supernatural threats and hidden experiments in their small town.",
+    posterPath: null,
+    releaseDate: "2016-07-15",
+    rating: 8.6,
+    tmdbUrl: "https://www.themoviedb.org/tv/66732",
+    genres: ["scienceFiction", "mystery", "adventure"],
+    tags: ["mindgame", "dark", "feelgood"],
+    language: "en",
+    runtime: "long",
+    era: "modern",
+    mediaType: "series"
+  },
+  {
+    id: "fb-series-6",
+    title: "Chernobyl",
+    overview:
+      "Scientists and workers confront the catastrophic consequences of a nuclear disaster.",
+    posterPath: null,
+    releaseDate: "2019-05-06",
+    rating: 8.7,
+    tmdbUrl: "https://www.themoviedb.org/tv/87108",
+    genres: ["drama", "thriller"],
+    tags: ["dark", "trueStory", "inspiring"],
+    language: "en",
+    runtime: "long",
+    era: "modern",
+    mediaType: "series"
+  },
+  {
+    id: "fb-series-7",
+    title: "Attack on Titan",
+    overview:
+      "Humanity fights for survival against giant creatures while dark secrets unfold.",
+    posterPath: null,
+    releaseDate: "2013-04-07",
+    rating: 8.7,
+    tmdbUrl: "https://www.themoviedb.org/tv/1429",
+    genres: ["action", "animation", "drama"],
+    tags: ["anime", "dark", "inspiring"],
+    language: "ja",
+    runtime: "long",
+    era: "modern",
+    mediaType: "series"
+  },
+  {
+    id: "fb-series-8",
+    title: "Ted Lasso",
+    overview:
+      "An upbeat American coach leads a struggling football club with optimism and empathy.",
+    posterPath: null,
+    releaseDate: "2020-08-14",
+    rating: 8.4,
+    tmdbUrl: "https://www.themoviedb.org/tv/97546",
+    genres: ["comedy", "drama"],
+    tags: ["feelgood", "sports", "family", "inspiring"],
+    language: "en",
+    runtime: "medium",
+    era: "latest",
+    mediaType: "series"
+  },
+  {
+    id: "fb-series-hi-1",
+    title: "Paatal Lok",
+    overview:
+      "A troubled cop investigates a failed assassination case that exposes a dark web of crime and politics.",
+    posterPath: null,
+    releaseDate: "2020-05-15",
+    rating: 7.9,
+    tmdbUrl: "https://www.themoviedb.org/tv/100784",
+    genres: ["crime", "mystery", "thriller"],
+    tags: ["detective", "dark", "mindgame"],
+    language: "hi",
+    runtime: "long",
+    era: "latest",
+    mediaType: "series"
+  },
+  {
+    id: "fb-series-hi-2",
+    title: "Delhi Crime",
+    overview:
+      "A police team in Delhi races against time while investigating a brutal case.",
+    posterPath: null,
+    releaseDate: "2019-03-22",
+    rating: 7.8,
+    tmdbUrl: "https://www.themoviedb.org/tv/86831",
+    genres: ["crime", "drama", "mystery"],
+    tags: ["detective", "trueStory", "dark"],
+    language: "hi",
+    runtime: "medium",
+    era: "modern",
+    mediaType: "series"
+  },
+  {
+    id: "fb-series-hi-3",
+    title: "Sacred Games",
+    overview:
+      "A Mumbai cop receives a warning call that leads him into a sprawling underworld conspiracy.",
+    posterPath: null,
+    releaseDate: "2018-07-06",
+    rating: 7.7,
+    tmdbUrl: "https://www.themoviedb.org/tv/73021",
+    genres: ["crime", "thriller", "drama"],
+    tags: ["dark", "mindgame", "detective"],
+    language: "hi",
+    runtime: "long",
+    era: "modern",
+    mediaType: "series"
   }
 ];
 

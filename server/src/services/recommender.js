@@ -22,7 +22,7 @@ function mergeMoviePools(primaryMovies, secondaryMovies) {
   const seen = new Set();
 
   for (const movie of [...primaryMovies, ...secondaryMovies]) {
-    const key = `${movie.id}:${movie.title}`;
+    const key = `${movie.mediaType || "movie"}:${movie.id}:${movie.title}`;
     if (seen.has(key)) {
       continue;
     }
@@ -49,11 +49,12 @@ export async function recommendFromAnswers(answers) {
 
   try {
     const tmdbResponse = await fetchMoviesFromTmdb({
-      primaryGenreId: primaryGenre.id,
-      secondaryGenreId: secondaryGenre ? secondaryGenre.id : null,
+      primaryGenreKey: primaryKey,
+      secondaryGenreKey: secondaryKey,
       languagePreference: rankContext.languagePreference,
       focusTags: rankContext.focusTags,
-      eraPreference: rankContext.eraPreference
+      eraPreference: rankContext.eraPreference,
+      mediaPreference: rankContext.mediaPreference
     });
 
     source = tmdbResponse.source;
@@ -89,6 +90,7 @@ export async function recommendFromAnswers(answers) {
     recommendationReason: buildReason({
       primaryGenre,
       secondaryGenre,
+      mediaPreference: rankContext.mediaPreference,
       languagePreference: rankContext.languagePreference,
       preferredTags: rankContext.preferredTags,
       focusLabel: rankContext.focusLabel
