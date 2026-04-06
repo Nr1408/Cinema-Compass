@@ -33,7 +33,12 @@ function resolveMediaLabel(appliedMedia, selectedMediaAnswerId) {
     return MEDIA_LABEL_BY_ANSWER[selectedMediaAnswerId];
   }
 
-  return "No format preference";
+  return "Movies only";
+}
+
+function normalizeStoredHistoryMedia(mediaLabel) {
+  const resolved = resolveMediaLabel(mediaLabel, null);
+  return resolved === "No format preference" ? "Movies only" : resolved;
 }
 
 function formatDate(value) {
@@ -144,7 +149,12 @@ export default function App() {
 
       const parsed = JSON.parse(storedHistory);
       if (Array.isArray(parsed)) {
-        setHistoryItems(parsed);
+        const normalized = parsed.map((item) => ({
+          ...item,
+          media: normalizeStoredHistoryMedia(item?.media)
+        }));
+
+        setHistoryItems(normalized);
       }
     } catch (historyError) {
       console.error(historyError);
