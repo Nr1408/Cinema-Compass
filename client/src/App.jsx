@@ -23,6 +23,45 @@ const MEDIA_LABEL_BY_ANSWER = {
   any: "Movies and series"
 };
 
+const ADAPTIVE_QUESTION_CONTENT = {
+  pace: {
+    series: {
+      title: "What pacing style do you want in a series?",
+      optionTextById: {
+        fast: "Fast-paced episodes and cliffhangers",
+        balanced: "Balanced character and story progression",
+        slow: "Slow-burn world building"
+      }
+    },
+    any: {
+      title: "What pacing style do you want?",
+      optionTextById: {
+        fast: "Fast and thrilling (movie or series)",
+        balanced: "Balanced storytelling",
+        slow: "Slow and deep"
+      }
+    }
+  },
+  length: {
+    series: {
+      title: "How much can you watch right now?",
+      optionTextById: {
+        quick: "1 to 2 short episodes",
+        normal: "3 to 5 episodes",
+        long: "Long binge session"
+      }
+    },
+    any: {
+      title: "How much can you watch right now?",
+      optionTextById: {
+        quick: "Quick session (one short movie or 1 to 2 episodes)",
+        normal: "Medium session (full movie or a few episodes)",
+        long: "Long immersive watch or binge"
+      }
+    }
+  }
+};
+
 function resolveMediaLabel(appliedMedia, selectedMediaAnswerId) {
   const trimmedApplied = typeof appliedMedia === "string" ? appliedMedia.trim() : "";
   if (trimmedApplied) {
@@ -39,6 +78,30 @@ function resolveMediaLabel(appliedMedia, selectedMediaAnswerId) {
 function normalizeStoredHistoryMedia(mediaLabel) {
   const resolved = resolveMediaLabel(mediaLabel, null);
   return resolved === "No format preference" ? "Movies only" : resolved;
+}
+
+function getAdaptiveQuestion(currentQuestion, mediaAnswer) {
+  if (!currentQuestion) {
+    return null;
+  }
+
+  const mediaKey = mediaAnswer === "series" || mediaAnswer === "any" ? mediaAnswer : "movie";
+  const contentOverride = ADAPTIVE_QUESTION_CONTENT[currentQuestion.id]?.[mediaKey];
+
+  if (!contentOverride) {
+    return currentQuestion;
+  }
+
+  const optionTextById = contentOverride.optionTextById || {};
+
+  return {
+    ...currentQuestion,
+    title: contentOverride.title || currentQuestion.title,
+    options: currentQuestion.options.map((option) => ({
+      ...option,
+      text: optionTextById[option.id] || option.text
+    }))
+  };
 }
 
 function formatDate(value) {
@@ -74,8 +137,15 @@ export default function App() {
   const [historyItems, setHistoryItems] = useState([]);
 
   const currentQuestion = questions[currentIndex] || null;
+  const displayedQuestion = useMemo(
+    () => getAdaptiveQuestion(currentQuestion, answers.media),
+    [currentQuestion, answers.media]
+  );
   const totalQuestions = questions.length;
-  const selectedOption = currentQuestion ? answers[currentQuestion.id] : null;
+  const selectedOption = displayedQuestion ? answers[displayedQuestion.id] : null;
+  const hasValidSelection = displayedQuestion
+    ? displayedQuestion.options.some((option) => option.id === selectedOption)
+    : false;
 
   const mediaPreferenceLabel = useMemo(
     () => resolveMediaLabel(result?.appliedPreferences?.media, answers.media),
@@ -183,10 +253,25 @@ export default function App() {
       return;
     }
 
-    setAnswers((prev) => ({
-      ...prev,
-      [currentQuestion.id]: optionId
-    }));
+    const questionId = currentQuestion.id;
+
+    setAnswers((prev) => {
+      if (prev[questionId] === optionId) {
+        return prev;
+      }
+
+      const next = {
+        ...prev,
+        [questionId]: optionId
+      };
+
+      // When a prior answer changes, reset answers for later questions.
+      for (const laterQuestion of questions.slice(currentIndex + 1)) {
+        delete next[laterQuestion.id];
+      }
+
+      return next;
+    });
   }
 
   async function submitQuiz() {
@@ -229,7 +314,7 @@ export default function App() {
   }
 
   function goNext() {
-    if (!selectedOption) {
+    if (!hasValidSelection) {
       return;
     }
 
@@ -291,7 +376,7 @@ export default function App() {
 
         {!loading && error ? <div className="status-box error">{error}</div> : null}
 
-        {!loading && !result && currentQuestion ? (
+        {!loading && !result && displayedQuestion ? (
           <section className="quiz-card">
             <div className="quiz-top-row">
               <span>
@@ -304,10 +389,10 @@ export default function App() {
               <div className="progress-fill" style={{ width: `${progress}%` }} />
             </div>
 
-            <h2>{currentQuestion.title}</h2>
+            <h2>{displayedQuestion.title}</h2>
 
             <div className="options-grid">
-              {currentQuestion.options.map((option) => {
+              {displayedQuestion.options.map((option) => {
                 const active = selectedOption === option.id;
                 return (
                   <button
@@ -336,7 +421,7 @@ export default function App() {
                 type="button"
                 className="primary-btn"
                 onClick={goNext}
-                disabled={!selectedOption || submitting}
+                disabled={!hasValidSelection || submitting}
               >
                 {currentIndex === totalQuestions - 1
                   ? submitting
