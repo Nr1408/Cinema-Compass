@@ -86,6 +86,13 @@ export const QUESTIONS = [
         tags: ["feelgood", "family"]
       },
       {
+        id: "tired",
+        text: "Tired and low-energy",
+        weights: { comedy: 3, family: 2, animation: 2, drama: 1 },
+        tags: ["feelgood", "family"],
+        runtime: "short"
+      },
+      {
         id: "emotional",
         text: "Emotional and reflective",
         weights: { drama: 3, romance: 2 },

@@ -277,6 +277,28 @@ function isEraMatch(movie, context) {
   return Boolean(movie.era && movie.era === context.eraPreference);
 }
 
+function isRuntimeMatch(movie, context) {
+  if (!context.runtimePreference) {
+    return true;
+  }
+
+  if (!movie.runtime) {
+    return true;
+  }
+
+  return movie.runtime === context.runtimePreference;
+}
+
+function hasExplicitConstraint(context) {
+  return Boolean(
+    (context.mediaPreference && context.mediaPreference !== "any") ||
+      (context.languagePreference && context.languagePreference !== "any") ||
+      context.eraPreference ||
+      context.runtimePreference ||
+      context.focusTags.length
+  );
+}
+
 function isExactOptionMatch(movie, context) {
   if (!isMediaPreferenceMatch(movie, context)) {
     return false;
@@ -291,6 +313,10 @@ function isExactOptionMatch(movie, context) {
   }
 
   if (!isFocusMatch(movie, context)) {
+    return false;
+  }
+
+  if (!isRuntimeMatch(movie, context)) {
     return false;
   }
 
@@ -350,6 +376,15 @@ function computeConstraintFit(movie, context) {
     slots += 1;
     if (movie.era === context.eraPreference) {
       matched += 1;
+    }
+  }
+
+  if (context.runtimePreference) {
+    slots += 1;
+    if (movie.runtime === context.runtimePreference) {
+      matched += 1;
+    } else if (!movie.runtime) {
+      matched += 0.4;
     }
   }
 
@@ -524,6 +559,7 @@ export function rankMoviesDetailed(movies, context, limit = RESULT_LIMIT) {
     languageRelaxed: false,
     languageSupplyLow: false,
     languagePriorityEnforced: false,
+    exactPriorityEnforced: false,
     exactMatchCount: 0,
     noExactOptionMatch: false,
     exactOptionMatchLimited: false,
@@ -794,6 +830,50 @@ export function rankMoviesDetailed(movies, context, limit = RESULT_LIMIT) {
       rankingSignals.languageSupplyLow = true;
     } else {
       rankingSignals.languageSupplyLow = true;
+    }
+  }
+
+  if (hasExplicitConstraint(context) && rankingSignals.exactMatchCount > 0 && uniqueMovies.length) {
+    const requiredExactSlots = Math.min(limit, Math.min(3, rankingSignals.exactMatchCount));
+    const exactRankedMovies = uniqueMovies.filter((movie) =>
+      isExactOptionMatch(movie, context)
+    );
+
+    if (exactRankedMovies.length < requiredExactSlots) {
+      const existingExactKeys = new Set(
+        exactRankedMovies.map((movie) => buildMovieIdentityKey(movie))
+      );
+
+      const additionalExactMovies = scoreAndSort(baseMovies)
+        .filter((movie) => isExactOptionMatch(movie, context))
+        .map(({ __score, __constraintFit, ...moviePayload }) => moviePayload);
+
+      for (const movie of additionalExactMovies) {
+        const key = buildMovieIdentityKey(movie);
+        if (existingExactKeys.has(key)) {
+          continue;
+        }
+
+        existingExactKeys.add(key);
+        exactRankedMovies.push(movie);
+
+        if (exactRankedMovies.length >= requiredExactSlots) {
+          break;
+        }
+      }
+    }
+
+    if (exactRankedMovies.length) {
+      const nonExactRankedMovies = uniqueMovies.filter(
+        (movie) => !isExactOptionMatch(movie, context)
+      );
+
+      uniqueMovies.splice(
+        0,
+        uniqueMovies.length,
+        ...[...exactRankedMovies, ...nonExactRankedMovies].slice(0, limit)
+      );
+      rankingSignals.exactPriorityEnforced = exactRankedMovies.length >= requiredExactSlots;
     }
   }
 
