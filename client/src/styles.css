@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;700&display=swap");
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;700&display=swap');
 
 :root {
   --bg-1: #040a1a;
@@ -27,7 +27,7 @@ html.high-refresh {
 body {
   margin: 0;
   min-height: 100vh;
-  font-family: "DM Sans", "Segoe UI", sans-serif;
+  font-family: 'Montserrat', system-ui, Arial, sans-serif;
   color: var(--text);
   background: radial-gradient(circle at 10% 15%, #223f76 0%, transparent 35%),
     radial-gradient(circle at 80% 80%, #134f4c 0%, transparent 32%),

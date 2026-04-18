@@ -1,4 +1,9 @@
 // @ts-nocheck
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.42.5";
+// Initialize Supabase client using environment variables
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
 import { FALLBACK_MOVIES } from "../../../server/src/data/fallbackMovies.js";
@@ -551,6 +556,19 @@ serve(async (req) => {
           400,
           corsHeaders
         );
+      }
+
+      // Store quiz answers in Supabase
+      try {
+        await supabase.from("quiz_answers").insert([
+          {
+            answers,
+            submitted_at: new Date().toISOString()
+          }
+        ]);
+      } catch (e) {
+        // Log but do not block recommendation if storing fails
+        console.error("Failed to store quiz answers:", e);
       }
 
       const recommendation = await recommendFromAnswers(answers);
